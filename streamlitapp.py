@@ -58,29 +58,37 @@ st.set_page_config(
 
 # ============================================================
 #  PASSWORD GATE
+#  Uses an &auth=1 query param so navigation links keep the
+#  user logged in across page reloads.
 # ============================================================
+SITE_PASSWORD = "poverty2026center"  # Change this!
+
 def check_password():
-    """Returns True if the user entered the correct password."""
+    """Returns True if the user is authenticated."""
+    # Already authenticated via query param
+    if st.query_params.get("auth") == "1":
+        return True
+
     def password_entered():
-        if st.session_state["password"] == "poverty2026center":  # Change this!
+        if st.session_state["password"] == SITE_PASSWORD:
             st.session_state["password_correct"] = True
-            del st.session_state["password"]  # don't store password
+            del st.session_state["password"]
+            # Add auth=1 to current URL so it persists across link clicks
+            params = dict(st.query_params)
+            params["auth"] = "1"
+            st.query_params.update(params)
         else:
             st.session_state["password_correct"] = False
 
-    if "password_correct" not in st.session_state:
-        st.text_input(
-            "Password", type="password", on_change=password_entered, key="password"
-        )
-        return False
-    elif not st.session_state["password_correct"]:
-        st.text_input(
-            "Password", type="password", on_change=password_entered, key="password"
-        )
-        st.error("Password incorrect")
-        return False
-    else:
+    if st.session_state.get("password_correct"):
         return True
+
+    st.text_input(
+        "Password", type="password", on_change=password_entered, key="password"
+    )
+    if "password_correct" in st.session_state and not st.session_state["password_correct"]:
+        st.error("Password incorrect")
+    return False
 
 if not check_password():
     st.stop()
@@ -452,27 +460,27 @@ st.markdown("""
 
 # ============================================================
 #  NAVBAR — Shown on every page
-#  To add a new page: add a dropdown-item with href="?page=<name>"
+#  To add a new page: add a dropdown-item with href="?auth=1&page=<name>"
 #  IMPORTANT: always include target="_self" on links
 # ============================================================
 st.markdown(f"""
     <div class="navbar">
         <div class="navbar-container">
             <div class="navbar-brand">
-                <a href="?page=home" target="_self"><img src="data:image/jpeg;base64,{navbar_logo_base64}" alt="Cleveland NST Logo"></a>
+                <a href="?auth=1&page=home" target="_self"><img src="data:image/jpeg;base64,{navbar_logo_base64}" alt="Cleveland NST Logo"></a>
             </div>
             <ul class="navbar-menu">
                 <li class="navbar-item">
-                    <a href="?page=home" target="_self" class="navbar-link navbar-link-home">Home</a>
+                    <a href="?auth=1&page=home" target="_self" class="navbar-link navbar-link-home">Home</a>
                 </li>
                 <li class="navbar-item">
                     <a href="#" class="navbar-link">Data</a>
                     <div class="dropdown-menu">
-                        <a href="?page=datasets" target="_self" class="dropdown-item">
+                        <a href="?auth=1&page=datasets" target="_self" class="dropdown-item">
                             <div class="dropdown-item-title">Datasets</div>
                             <div class="dropdown-item-description">Browse and download comprehensive neighborhood data</div>
                         </a>
-                        <a href="?page=maps" target="_self" class="dropdown-item">
+                        <a href="?auth=1&page=maps" target="_self" class="dropdown-item">
                             <div class="dropdown-item-title">Interactive Maps</div>
                             <div class="dropdown-item-description">Visualize Cleveland data on interactive maps</div>
                         </a>
@@ -485,11 +493,11 @@ st.markdown(f"""
                             <div class="dropdown-item-title">About</div>
                             <div class="dropdown-item-description">Learn about NST and our mission</div>
                         </a>
-                        <a href="?page=methodology" target="_self" class="dropdown-item">
+                        <a href="?auth=1&page=methodology" target="_self" class="dropdown-item">
                             <div class="dropdown-item-title">Methodology</div>
                             <div class="dropdown-item-description">Our data collection and analysis approach</div>
                         </a>
-                        <a href="?page=projects" target="_self" class="dropdown-item">
+                        <a href="?auth=1&page=projects" target="_self" class="dropdown-item">
                             <div class="dropdown-item-title">Projects</div>
                             <div class="dropdown-item-description">Dedicated pages for each of our projects</div>
                         </a>
@@ -498,7 +506,7 @@ st.markdown(f"""
                 <li class="navbar-item">
                     <a href="#" class="navbar-link">Resources</a>
                     <div class="dropdown-menu">
-                        <a href="?page=resources" target="_self" class="dropdown-item">
+                        <a href="?auth=1&page=resources" target="_self" class="dropdown-item">
                             <div class="dropdown-item-title">Resources</div>
                             <div class="dropdown-item-description">Tools and guides for using NST data</div>
                         </a>
@@ -518,7 +526,7 @@ st.markdown(f"""
 #  PAGE ROUTING
 #  Each page is an if/elif block. To add a new page:
 #    1. Add elif current_page == "your-page":
-#    2. Add a navbar link with href="?page=your-page"
+#    2. Add a navbar link with href="?auth=1&page=your-page"
 # ############################################################
 
 if current_page == "datasets":
@@ -582,7 +590,7 @@ if current_page == "datasets":
     # -- Breadcrumb --
     st.markdown("""
         <div class="breadcrumb">
-            <a href="?page=home" target="_self">Home</a> &nbsp;/&nbsp; <strong>Datasets</strong>
+            <a href="?auth=1&page=home" target="_self">Home</a> &nbsp;/&nbsp; <strong>Datasets</strong>
         </div>
     """, unsafe_allow_html=True)
 
@@ -1120,13 +1128,13 @@ elif current_page == "maps":
         # Breadcrumb
         st.markdown(f"""
             <div class="breadcrumb">
-                <a href="?page=home" target="_self">Home</a> &nbsp;/&nbsp;
-                <a href="?page=maps" target="_self">Map Explorer</a> &nbsp;/&nbsp;
+                <a href="?auth=1&page=home" target="_self">Home</a> &nbsp;/&nbsp;
+                <a href="?auth=1&page=maps" target="_self">Map Explorer</a> &nbsp;/&nbsp;
                 <strong>{selected_hood}</strong>
             </div>
         """, unsafe_allow_html=True)
 
-        st.markdown('<a href="?page=maps" target="_self" class="hood-back-link">&larr; Back to Map</a>', unsafe_allow_html=True)
+        st.markdown('<a href="?auth=1&page=maps" target="_self" class="hood-back-link">&larr; Back to Map</a>', unsafe_allow_html=True)
 
         # Header with ward/zip info
         wards_in_hood = sorted(hood_df["ward"].dropna().unique().astype(int).tolist())
@@ -1332,7 +1340,7 @@ elif current_page == "maps":
         # Breadcrumb
         st.markdown("""
             <div class="breadcrumb">
-                <a href="?page=home" target="_self">Home</a> &nbsp;/&nbsp; <strong>Map Explorer</strong>
+                <a href="?auth=1&page=home" target="_self">Home</a> &nbsp;/&nbsp; <strong>Map Explorer</strong>
             </div>
         """, unsafe_allow_html=True)
 
@@ -1371,7 +1379,7 @@ elif current_page == "maps":
             hood_counts = df_map["neighborhood"].value_counts().sort_index()
             hood_list_html = ""
             for hood_name, count in hood_counts.items():
-                hood_list_html += f'<a href="?page=maps&hood={hood_name}" target="_self" class="hood-list-item">{hood_name}<span class="hood-list-item-count">{count}</span></a>'
+                hood_list_html += f'<a href="?auth=1&page=maps&hood={hood_name}" target="_self" class="hood-list-item">{hood_name}<span class="hood-list-item-count">{count}</span></a>'
             st.markdown(f'<div style="max-height:400px;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px;">{hood_list_html}</div>', unsafe_allow_html=True)
 
         with map_col:
@@ -1513,7 +1521,7 @@ elif current_page == "property-search":
     """, unsafe_allow_html=True)
 
     # -- Breadcrumb + header --
-    st.markdown('<div class="breadcrumb"><a href="?page=home" target="_self">Home</a> &nbsp;/&nbsp; <strong>Property Search</strong></div>', unsafe_allow_html=True)
+    st.markdown('<div class="breadcrumb"><a href="?auth=1&page=home" target="_self">Home</a> &nbsp;/&nbsp; <strong>Property Search</strong></div>', unsafe_allow_html=True)
     st.markdown("""
         <div class="page-header">Property Search</div>
         <div class="page-subtitle">Look up detailed information for a specific property.</div>
@@ -1719,7 +1727,7 @@ elif current_page == "property-search":
         cols = st.columns(5)
         for i, (hood, count) in enumerate(hood_counts.items()):
             with cols[i % 5]:
-                st.markdown(f'<a href="?page=datasets" target="_self" style="color:#003071;text-decoration:none;font-weight:500;">{hood}</a> <span style="color:#999;font-size:0.85rem;">({count})</span>', unsafe_allow_html=True)
+                st.markdown(f'<a href="?auth=1&page=datasets" target="_self" style="color:#003071;text-decoration:none;font-weight:500;">{hood}</a> <span style="color:#999;font-size:0.85rem;">({count})</span>', unsafe_allow_html=True)
 
     # -- Footer --
     st.markdown("---")
@@ -1743,7 +1751,7 @@ else:
                 <div class="hero-subtitle">POVERTY CENTER AT CASE WESTERN RESERVE UNIVERSITY</div>
                 <div class="hero-title">CLEVELAND'S<br>NEIGHBORHOOD STRATEGY TECHNOLOGY</div>
                 <div class="hero-buttons">
-                    <a href="?page=datasets" target="_self" class="hero-button">Find Data</a>
+                    <a href="?auth=1&page=datasets" target="_self" class="hero-button">Find Data</a>
                     <a href="#" class="hero-button">Popular Projects</a>
                     <a href="#" class="hero-button">Learn More</a>
                 </div>
@@ -1771,19 +1779,19 @@ else:
     st.markdown("""
         <div class="data-section-title">GET STARTED</div>
         <div class="data-cards-container">
-            <a href="?page=maps" target="_self" class="data-card" style="text-decoration:none;">
+            <a href="?auth=1&page=maps" target="_self" class="data-card" style="text-decoration:none;">
                 <div class="data-card-title">Map Explorer</div>
                 <p style="color: #666; font-size: 1.1rem; margin-top: 1rem;">
                     Visualize neighborhood data on interactive maps
                 </p>
             </a>
-            <a href="?page=datasets" target="_self" class="data-card" style="text-decoration:none;">
+            <a href="?auth=1&page=datasets" target="_self" class="data-card" style="text-decoration:none;">
                 <div class="data-card-title">Browse Data</div>
                 <p style="color: #666; font-size: 1.1rem; margin-top: 1rem;">
                     Explore comprehensive datasets and statistics
                 </p>
             </a>
-            <a href="?page=property-search" target="_self" class="data-card" style="text-decoration:none;">
+            <a href="?auth=1&page=property-search" target="_self" class="data-card" style="text-decoration:none;">
                 <div class="data-card-title">Search Properties</div>
                 <p style="color: #666; font-size: 1.1rem; margin-top: 1rem;">
                     Find detailed information on specific properties
