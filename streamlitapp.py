@@ -56,6 +56,35 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+# ============================================================
+#  PASSWORD GATE
+# ============================================================
+def check_password():
+    """Returns True if the user entered the correct password."""
+    def password_entered():
+        if st.session_state["password"] == "poverty2026center":  # Change this!
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]  # don't store password
+        else:
+            st.session_state["password_correct"] = False
+
+    if "password_correct" not in st.session_state:
+        st.text_input(
+            "Password", type="password", on_change=password_entered, key="password"
+        )
+        return False
+    elif not st.session_state["password_correct"]:
+        st.text_input(
+            "Password", type="password", on_change=password_entered, key="password"
+        )
+        st.error("Password incorrect")
+        return False
+    else:
+        return True
+
+if not check_password():
+    st.stop()
+
 # Read URL query params to determine which page to show
 query_params = st.query_params
 current_page = query_params.get("page", "home")
