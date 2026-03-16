@@ -26,7 +26,6 @@ FONT: Inter (Google Fonts)
 #  IMPORTS
 # ============================================================
 import streamlit as st
-from PIL import Image
 import base64
 import pandas as pd
 import json
