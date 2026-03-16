@@ -38,8 +38,6 @@ import zipfile
 # ============================================================
 
 # Load logo images and encode as base64 for use in HTML
-logo = Image.open("assets/logo.jpg")
-
 def get_base64_image(image_path):
     """Convert an image file to a base64 string for embedding in HTML."""
     with open(image_path, "rb") as img_file:
@@ -47,11 +45,15 @@ def get_base64_image(image_path):
 
 navbar_logo_base64 = get_base64_image("assets/upperleft logo.jpg")
 hero_backdrop_base64 = get_base64_image("assets/cleveland backdrop.jpg")
+partner_cleveland_base64 = get_base64_image("assets/partner_cleveland.svg")
+partner_cuyahoga_base64 = get_base64_image("assets/updated_Cuyahoga_County_logo.svg")
+partner_cclrc_base64 = get_base64_image("assets/partner_cclrc.svg")
+partner_census_base64 = get_base64_image("assets/partner_census.svg")
 
 # Streamlit page config (must be first st. call)
 st.set_page_config(
     page_title="Cleveland NST 2.0",
-    page_icon=logo,
+    page_icon="assets/updated_nst_favicon.svg",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
@@ -510,7 +512,7 @@ st.markdown(f"""
                             <div class="dropdown-item-title">Resources</div>
                             <div class="dropdown-item-description">Tools and guides for using NST data</div>
                         </a>
-                        <a href="https://case.edu/socialwork/povertycenter/about/contact-us" target="_blank" class="dropdown-item">
+                        <a href="?auth=1&page=contact" target="_self" class="dropdown-item">
                             <div class="dropdown-item-title">Contact</div>
                             <div class="dropdown-item-description">How to reach us or work with us</div>
                         </a>
@@ -532,310 +534,602 @@ st.markdown(f"""
 if current_page == "datasets":
     # ========================================================
     #  DATASETS PAGE — Browse, filter, and export property data
-    #  Two search modes: Guided Search (simple) and Advanced Filters (power user)
-    #  Results shown in tabs: Table, Map, Charts, Summary
+    #  Simple filters always visible; Advanced filters in expanders.
+    #  Filter presets for common research tasks.
+    #  Column selector with presets.
+    #  Results: Table, Map, Charts, Summary tabs + Export.
     # ========================================================
 
-    # -- Load data (cached so it only reads CSV once) --
     @st.cache_data
     def load_data():
-        return pd.read_csv("data/nst_sample_data.csv")
+        return pd.read_csv("data/nstsample.csv", low_memory=False)
 
     df = load_data()
 
-    # -- Page-specific CSS --
+    # ---- Column groups for the column selector ----
+    COL_GROUPS = {
+        "Core": ["PARCEL", "number", "street", "address", "NEIGHBOR10", "CLASSIFICATION_DESCR", "yrbuilt", "condition", "parcel_status"],
+        "General Info": ["PRIMARY_OWNER_NAME", "towner", "lsaleamt", "date", "deed", "LENDER", "MAIL_STATE", "MAIL_CITY", "ownerupdate"],
+        "Use / Occupancy": ["vacantlot_type", "combovac", "vl", "lbvl", "unoccupied", "active_condemn", "city_lb_flag"],
+        "Property Characteristics": ["pclass", "luc", "propsize", "front", "depth", "lotshape", "numstory", "basesqft", "totusabl", "style", "rextwall", "bedrooms", "baths", "halfbath", "totbldgs", "units", "zone_desc"],
+        "Values & Taxes": ["TAX_MARKET_TOTAL", "TAX_MARKET_LAND", "TAX_MARKET_IMPROVEMENT", "currentvalue2023", "proposedvalue2024", "lsaleamt", "NET_TAX_DELQ_DUE", "GRAND_TOTAL_BALANCE", "GRAND_TOTAL_OWED", "GRAND_TOTAL_PAID", "PAYMENT_PLAN_FLAG", "HOMESTEAD_FLAG", "taxabate"],
+        "Foreclosure & Forfeiture": ["FORECLOSURE_FLAG", "lstatus", "caseno", "cdesig", "fo_deed_count", "fo_last_year", "forf_deed_count", "forf_last_year", "forf_status"],
+        "Land Bank": ["city_lb_flag", "city_lb_city_land_bank_type", "city_lb_transdt", "city_lb_deeded_owner", "cclrc", "disp_status", "p_source", "demo_status", "rehab_status", "public_status"],
+        "Lead Safe Certifications": ["lsc_stat", "lsc_issue_dt", "lead_rollout"],
+        "Violations (CLE Only)": ["active_condemn", "violation", "violation_vin", "violation_file_date", "violation_vtype", "violation_task_status", "cdc_comp", "council_comp", "mayor_comp", "mac_comp", "public_comp"],
+        "Evictions (CLE Only)": ["evict_case_number", "evict_case_status", "evict_yr", "evict_disp_status", "evict_plntf_name", "cases_filed_2023", "cases_filed_2024", "evict_case_file_dt"],
+        "Geographies": ["NEIGHBOR10", "ward2025", "ward", "zip", "cuyregion", "tract", "BLOCK10", "BLOCKGR10", "cia14_name", "LATITUDE", "LONGITUDE"],
+        "Rental & Housing Programs": ["rentalreg", "sect8", "sect8_cnty", "hud", "RR_status", "RR_owner"],
+        "Permits (CLE Only)": ["last_permit_per_id", "last_permit_category", "last_permit_file_date", "demo_per_id", "demo_per_appstatus", "bd_per_id", "bd_per_appstatus"],
+        "WRLC Survey 2023": ["wrlc23_category", "wrlc23_property_use", "wrlc23_results", "wrlc23_roof", "wrlc23_siding", "wrlc23_windows", "wrlc23_porch", "wrlc23_peeling_paint", "wrlc23_garage", "wrlc23_dumping"],
+    }
+
+    PRESET_COLUMNS = {
+        "Basic Info": ["PARCEL", "address", "NEIGHBOR10", "CLASSIFICATION_DESCR", "yrbuilt", "condition", "PRIMARY_OWNER_NAME", "LATITUDE", "LONGITUDE"],
+        "For Sale Research": ["PARCEL", "address", "NEIGHBOR10", "CLASSIFICATION_DESCR", "TAX_MARKET_TOTAL", "currentvalue2023", "lsaleamt", "date", "PRIMARY_OWNER_NAME", "FORECLOSURE_FLAG", "city_lb_flag", "lstatus"],
+        "Violation Analysis": ["PARCEL", "address", "NEIGHBOR10", "active_condemn", "violation", "violation_vtype", "cdc_comp", "lsc_stat", "cod_current_bh_lead_violations", "cod_current_cdph_lead_violations"],
+        "Tax Analysis": ["PARCEL", "address", "NEIGHBOR10", "TAX_MARKET_TOTAL", "NET_TAX_DELQ_DUE", "GRAND_TOTAL_BALANCE", "GRAND_TOTAL_OWED", "GRAND_TOTAL_PAID", "PAYMENT_PLAN_FLAG", "FORECLOSURE_FLAG"],
+    }
+
+    # ---- Page CSS ----
     st.markdown("""
         <style>
-        .breadcrumb {
-            font-size: 0.95rem;
-            color: #666;
-            margin-bottom: 1.5rem;
-        }
-        .breadcrumb a {
-            color: #003071;
-            text-decoration: none;
-        }
-        .breadcrumb a:hover {
-            text-decoration: underline;
-        }
-        .page-header {
-            font-size: 2.5rem;
-            font-weight: 700;
-            color: #003071;
-            margin-bottom: 0.3rem;
-        }
-        .page-subtitle {
-            font-size: 1.1rem;
-            color: #666;
-            margin-bottom: 1rem;
-        }
-        .stat-box {
-            background: #f8f9fc;
-            border-left: 4px solid #003071;
-            padding: 1rem 1.2rem;
-            border-radius: 4px;
-        }
-        .stat-box .stat-value {
-            font-size: 1.6rem;
-            font-weight: 700;
-            color: #003071;
-        }
-        .stat-box .stat-label {
-            font-size: 0.85rem;
-            color: #666;
-        }
+        .breadcrumb { font-size: 0.95rem; color: #666; margin-bottom: 1.5rem; }
+        .breadcrumb a { color: #003071; text-decoration: none; }
+        .breadcrumb a:hover { text-decoration: underline; }
+        .page-header { font-size: 2.5rem; font-weight: 700; color: #003071; margin-bottom: 0.3rem; }
+        .page-subtitle { font-size: 1.1rem; color: #666; margin-bottom: 1rem; }
+        .stat-box { background: #f8f9fc; border-left: 4px solid #003071; padding: 1rem 1.2rem; border-radius: 4px; }
+        .stat-box .stat-value { font-size: 1.6rem; font-weight: 700; color: #003071; }
+        .stat-box .stat-label { font-size: 0.85rem; color: #666; }
+        .preset-section { margin-bottom: 0.75rem; }
         </style>
     """, unsafe_allow_html=True)
 
-    # -- Breadcrumb --
-    st.markdown("""
-        <div class="breadcrumb">
-            <a href="?auth=1&page=home" target="_self">Home</a> &nbsp;/&nbsp; <strong>Datasets</strong>
-        </div>
-    """, unsafe_allow_html=True)
+    # ---- Breadcrumb & Header ----
+    st.markdown('<div class="breadcrumb"><a href="?auth=1&page=home" target="_self">Home</a> &nbsp;/&nbsp; <strong>Datasets</strong></div>', unsafe_allow_html=True)
+    st.markdown('<div class="page-header">Datasets</div><div class="page-subtitle">Browse and download comprehensive property data for Cleveland and Cuyahoga County.</div>', unsafe_allow_html=True)
 
-    # -- Page header --
-    st.markdown("""
-        <div class="page-header">Datasets</div>
-        <div class="page-subtitle">Browse and download comprehensive neighborhood data for Cleveland and Cuyahoga County.</div>
-    """, unsafe_allow_html=True)
+    # ---- Filter Preset Buttons ----
+    if "ds_preset" not in st.session_state:
+        st.session_state.ds_preset = None
 
-    # -- Search bar (searches combined "house_number street_name" or parcel_number) --
-    search_query = st.text_input(
-        "Search by address or parcel ID",
-        placeholder="e.g. 1725 Pearl Rd or 754-24-125",
-        label_visibility="collapsed",
-    )
+    st.markdown('<div class="preset-section">', unsafe_allow_html=True)
+    pr1, pr2, pr3, pr4, pr5, pr6 = st.columns(6)
+    preset_map = {
+        "Vacant Properties": pr1,
+        "With Violations": pr2,
+        "Tax Delinquent": pr3,
+        "Out-of-State Owners": pr4,
+        "In Foreclosure": pr5,
+        "Lead Issues": pr6,
+    }
+    for p_label, p_col in preset_map.items():
+        with p_col:
+            is_active = st.session_state.ds_preset == p_label
+            btn_label = f"✓ {p_label}" if is_active else p_label
+            if st.button(btn_label, use_container_width=True, key=f"preset_{p_label}"):
+                st.session_state.ds_preset = None if is_active else p_label
+                st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown("---")
 
-    # -- Two-path toggle: Guided Search vs Advanced Filters --
-    search_mode = st.radio(
-        "Choose how to search",
-        ["Guided Search", "Advanced Filters"],
-        horizontal=True,
+    # ---- Search Bar ----
+    search_query = st.text_input(
+        "search",
+        placeholder="Search by address, parcel ID, or owner name...",
         label_visibility="collapsed",
     )
 
-    # -- Apply address/parcel search first --
+    # ---- Always-Visible Simple Filters ----
+    sf1, sf2, sf3 = st.columns(3)
+    with sf1:
+        neighborhoods = ["All"] + sorted(df["NEIGHBOR10"].dropna().astype(str).replace("nan","").pipe(lambda s: s[s != ""]).unique().tolist())
+        f_neighborhood = st.selectbox("Neighborhood", neighborhoods, key="f_nbh")
+    with sf2:
+        prop_types = ["All"] + sorted(df["CLASSIFICATION_DESCR"].dropna().astype(str).replace("nan","").pipe(lambda s: s[s != ""]).unique().tolist())
+        f_prop_type = st.selectbox("Property Type", prop_types, key="f_ptype")
+    with sf3:
+        yr_min_data = int(df["yrbuilt"].dropna().min())
+        yr_max_data = int(df["yrbuilt"].dropna().max())
+        f_year_range = st.slider("Year Built", yr_min_data, yr_max_data, (yr_min_data, yr_max_data), key="f_yr")
+
+    sf4, sf5 = st.columns(2)
+    with sf4:
+        val_max_data = int(df["TAX_MARKET_TOTAL"].dropna().max())
+        f_value_range = st.slider("Property Value ($)", 0, val_max_data, (0, val_max_data), step=5000, format="$%d", key="f_val")
+    with sf5:
+        conditions = ["All"] + sorted(df["condition"].dropna().astype(str).replace("nan","").pipe(lambda s: s[s != ""]).unique().tolist())
+        f_condition = st.selectbox("Condition", conditions, key="f_cond")
+
+    # Quick toggles
+    tg1, tg2, tg3, tg4 = st.columns(4)
+    with tg1: f_vacant = st.checkbox("Vacant only", key="f_vac")
+    with tg2: f_violations = st.checkbox("Has violations", key="f_viol")
+    with tg3: f_tax_del = st.checkbox("Tax delinquent", key="f_tax")
+    with tg4: f_foreclosure_flag = st.checkbox("In foreclosure", key="f_fore")
+
+    # ---- Advanced Filters ----
+    with st.expander("Advanced Filters"):
+        with st.expander("Property Characteristics"):
+            pc1, pc2, pc3, pc4 = st.columns(4)
+            with pc1:
+                styles = ["All"] + sorted(df["style"].dropna().astype(str).replace("nan","").pipe(lambda s: s[s != ""]).unique().tolist())
+                f_style = st.selectbox("Style", styles, key="adv_style")
+            with pc2:
+                story_vals = sorted(df["numstory"].dropna().astype(str).replace("nan","").pipe(lambda s: s[s != ""]).unique().tolist())
+                story_opts = ["All"] + story_vals
+                f_stories = st.selectbox("# Stories", story_opts, key="adv_stories")
+            with pc3:
+                zones = ["All"] + sorted(df["zone_desc"].dropna().astype(str).replace("nan","").pipe(lambda s: s[s != ""]).unique().tolist())
+                f_zone = st.selectbox("Zoning", zones, key="adv_zone")
+            with pc4:
+                pclass_vals = ["All"] + sorted(df["pclass"].dropna().astype(str).replace("nan","").pipe(lambda s: s[s != ""]).unique().tolist())
+                f_pclass = st.selectbox("Property Class", pclass_vals, key="adv_pclass")
+            pc5, pc6, pc7 = st.columns(3)
+            with pc5:
+                bed_vals = sorted(df["bedrooms"].dropna().astype(str).replace("nan","").pipe(lambda s: s[s != ""]).unique().tolist())
+                bed_opts = ["All"] + bed_vals
+                f_bed = st.selectbox("Bedrooms", bed_opts, key="adv_bed")
+            with pc6:
+                bath_vals = sorted(df["baths"].dropna().astype(str).replace("nan","").pipe(lambda s: s[s != ""]).unique().tolist())
+                bath_opts = ["All"] + bath_vals
+                f_bath = st.selectbox("Bathrooms", bath_opts, key="adv_bath")
+            with pc7:
+                sqft_max = int(df["basesqft"].dropna().max()) if df["basesqft"].dropna().any() else 10000
+                f_sqft = st.slider("Building Sq Ft", 0, sqft_max, (0, sqft_max), key="adv_sqft")
+
+        with st.expander("Values & Taxes"):
+            vt1, vt2, vt3, vt4 = st.columns(4)
+            with vt1: f_homestead = st.checkbox("Homestead exemption", key="adv_home")
+            with vt2: f_payment_plan = st.checkbox("On payment plan", key="adv_pp")
+            with vt3: f_cert_pend = st.checkbox("Tax cert. pending", key="adv_cp")
+            with vt4: f_cert_sold = st.checkbox("Tax cert. sold", key="adv_cs")
+            vt5, vt6 = st.columns(2)
+            with vt5:
+                tax_abate_vals = ["All"] + sorted(df["taxabate"].dropna().astype(str).replace("nan","").pipe(lambda s: s[s != ""]).unique().tolist())
+                f_taxabate = st.selectbox("Tax Abatement Code", tax_abate_vals, key="adv_aba")
+            with vt6:
+                bor_vals = ["All"] + sorted(df["BOR_STATUS"].dropna().astype(str).replace("nan","").pipe(lambda s: s[s != ""]).unique().tolist())
+                f_bor = st.selectbox("BOR Status", bor_vals, key="adv_bor")
+
+        with st.expander("Violations (CLE Only)"):
+            vc1, vc2, vc3, vc4 = st.columns(4)
+            with vc1: f_active_condemn = st.checkbox("Active condemnation", key="adv_ac")
+            with vc2: f_bh_lead = st.checkbox("B&H lead violation", key="adv_bh")
+            with vc3: f_cdc_comp = st.checkbox("CDC complaint", key="adv_cdc")
+            with vc4: f_council_comp = st.checkbox("Council complaint", key="adv_council")
+            vc5, vc6 = st.columns(2)
+            with vc5:
+                vtype_vals = ["All"] + sorted(df["violation_vtype"].dropna().astype(str).replace("nan","").pipe(lambda s: s[s != ""]).unique().tolist())
+                f_vtype = st.selectbox("Violation Type", vtype_vals, key="adv_vtype")
+            with vc6:
+                vtask_vals = ["All"] + sorted(df["violation_task_status"].dropna().astype(str).replace("nan","").pipe(lambda s: s[s != ""]).unique().tolist())
+                f_vtask = st.selectbox("Violation Task Status", vtask_vals, key="adv_vtask")
+
+        with st.expander("Evictions (CLE Only)"):
+            ev1, ev2 = st.columns(2)
+            with ev1:
+                evs_vals = ["All"] + sorted(df["evict_case_status"].dropna().astype(str).replace("nan","").pipe(lambda s: s[s != ""]).unique().tolist())
+                f_evict_status = st.selectbox("Eviction Status", evs_vals, key="adv_evs")
+            with ev2:
+                evd_vals = ["All"] + sorted(df["evict_disp_status"].dropna().astype(str).replace("nan","").pipe(lambda s: s[s != ""]).unique().tolist())
+                f_evict_disp = st.selectbox("Eviction Disposition", evd_vals, key="adv_evd")
+            ev3, ev4 = st.columns(2)
+            with ev3:
+                evyr_vals = sorted(df["evict_yr"].dropna().astype(str).replace("nan","").pipe(lambda s: s[s != ""]).unique().tolist(), reverse=True)
+                evyr_opts = ["All"] + evyr_vals
+                f_evict_yr = st.selectbox("Eviction Year", evyr_opts, key="adv_evy")
+            with ev4:
+                f_evict_multi = st.checkbox("Multi-case evictions only", key="adv_evm")
+
+        with st.expander("Lead Safe Certifications"):
+            ls1, ls2 = st.columns(2)
+            with ls1:
+                lsc_vals = ["All"] + sorted(df["lsc_stat"].dropna().astype(str).replace("nan","").pipe(lambda s: s[s != ""]).unique().tolist())
+                f_lsc = st.selectbox("LSC Status", lsc_vals, key="adv_lsc")
+            with ls2:
+                lr_vals = ["All"] + sorted(df["lead_rollout"].dropna().astype(str).replace("nan","").pipe(lambda s: s[s != ""]).unique().tolist())
+                f_lead_rollout = st.selectbox("Lead Rollout Quarter", lr_vals, key="adv_lr")
+
+        with st.expander("Foreclosure & Forfeiture"):
+            ff1, ff2, ff3 = st.columns(3)
+            with ff1:
+                fo_vals = ["All"] + sorted(df["lstatus"].dropna().astype(str).replace("nan","").pipe(lambda s: s[s != ""]).unique().tolist())
+                f_fo_status = st.selectbox("Case Status", fo_vals, key="adv_fos")
+            with ff2:
+                fcdesig_vals = ["All"] + sorted(df["cdesig"].dropna().astype(str).replace("nan","").pipe(lambda s: s[s != ""]).unique().tolist())
+                f_cdesig = st.selectbox("Case Designation", fcdesig_vals, key="adv_cdesig")
+            with ff3: f_has_fo_deed = st.checkbox("Has fiscal officer deed", key="adv_fod")
+
+        with st.expander("Land Bank Status"):
+            lb1, lb2, lb3 = st.columns(3)
+            with lb1: f_city_lb = st.checkbox("City Land Bank", key="adv_clb")
+            with lb2: f_cclrc = st.checkbox("CCLRC", key="adv_cclrc")
+            with lb3:
+                demo_vals = ["All"] + sorted(df["demo_status"].dropna().astype(str).replace("nan","").pipe(lambda s: s[s != ""]).unique().tolist())
+                f_demo_status = st.selectbox("Demo Status", demo_vals, key="adv_demo")
+            lb4, lb5 = st.columns(2)
+            with lb4:
+                rehab_vals = ["All"] + sorted(df["rehab_status"].dropna().astype(str).replace("nan","").pipe(lambda s: s[s != ""]).unique().tolist())
+                f_rehab_status = st.selectbox("Rehab Status", rehab_vals, key="adv_rehab")
+            with lb5:
+                disp_vals = ["All"] + sorted(df["disp_status"].dropna().astype(str).replace("nan","").pipe(lambda s: s[s != ""]).unique().tolist())
+                f_disp_status = st.selectbox("Disposition Status", disp_vals, key="adv_disp")
+
+        with st.expander("Geographies"):
+            geo1, geo2, geo3, geo4 = st.columns(4)
+            with geo1:
+                ward_vals = sorted(df["ward2025"].dropna().astype(str).replace("nan","").pipe(lambda s: s[s != ""]).unique().tolist())
+                ward_opts = ["All"] + ward_vals
+                f_ward = st.selectbox("Ward (2025)", ward_opts, key="adv_ward")
+            with geo2:
+                zip_vals = sorted(df["zip"].dropna().astype(str).replace("nan","").pipe(lambda s: s[s != ""]).unique().tolist())
+                zip_opts = ["All"] + zip_vals
+                f_zip = st.selectbox("ZIP Code", zip_opts, key="adv_zip")
+            with geo3:
+                region_vals = ["All"] + sorted(df["cuyregion"].dropna().astype(str).replace("nan","").pipe(lambda s: s[s != ""]).unique().tolist())
+                f_region = st.selectbox("Cuyahoga Region", region_vals, key="adv_reg")
+            with geo4:
+                cia_vals = ["All"] + sorted(df["cia14_name"].dropna().astype(str).replace("nan","").pipe(lambda s: s[s != ""]).unique().tolist())
+                f_cia = st.selectbox("CIA Area", cia_vals, key="adv_cia")
+
+        with st.expander("Rental & Housing Programs"):
+            rh1, rh2, rh3, rh4 = st.columns(4)
+            with rh1: f_rental = st.checkbox("Rental registered", key="adv_rr")
+            with rh2: f_sect8 = st.checkbox("Section 8", key="adv_s8")
+            with rh3: f_hud = st.checkbox("HUD", key="adv_hud")
+            with rh4: f_out_of_state = st.checkbox("Out-of-state owner", key="adv_oos")
+
+    # ---- Apply All Filters ----
     filtered_df = df.copy()
+
+    # Preset overrides
+    p = st.session_state.ds_preset
+    if p == "Vacant Properties":
+        filtered_df = filtered_df[filtered_df["combovac"].fillna(0) == 1]
+    elif p == "With Violations":
+        filtered_df = filtered_df[filtered_df["violation"].fillna(0) == 1]
+    elif p == "Tax Delinquent":
+        filtered_df = filtered_df[filtered_df["NET_TAX_DELQ_DUE"].fillna(0) > 0]
+    elif p == "Out-of-State Owners":
+        filtered_df = filtered_df[~filtered_df["MAIL_STATE"].fillna("").isin(["OH", "/", ""])]
+    elif p == "In Foreclosure":
+        filtered_df = filtered_df[filtered_df["FORECLOSURE_FLAG"].fillna(0) == 1]
+    elif p == "Lead Issues":
+        filtered_df = filtered_df[filtered_df["lsc_stat"].fillna("").astype(str) == "FAIL"]
+
+    # Search
     if search_query:
-        full_address = filtered_df["house_number"].astype(str) + " " + filtered_df["street_name"].fillna("")
+        q = search_query.strip()
         mask = (
-            full_address.str.contains(search_query, case=False, na=False)
-            | filtered_df["parcel_number"].str.contains(search_query, case=False, na=False)
+            filtered_df["address"].fillna("").str.contains(q, case=False, regex=False)
+            | filtered_df["PARCEL"].fillna("").astype(str).str.contains(q, case=False, regex=False)
+            | filtered_df["PRIMARY_OWNER_NAME"].fillna("").str.contains(q, case=False, regex=False)
         )
         filtered_df = filtered_df[mask]
 
-    # -- PATH 1: GUIDED SEARCH --
-    # Shows different filter sets based on what the user is looking for.
-    if search_mode == "Guided Search":
-        guided_choice = st.radio(
-            "What are you looking for?",
-            [
-                "Properties in a specific neighborhood",
-                "Properties with certain characteristics",
-                "Properties by owner type",
-                "Properties with violations or permits",
-                "Custom advanced search",
-            ],
-        )
+    # Simple filters
+    if f_neighborhood != "All":
+        filtered_df = filtered_df[filtered_df["NEIGHBOR10"].astype(str) == f_neighborhood]
+    if f_prop_type != "All":
+        filtered_df = filtered_df[filtered_df["CLASSIFICATION_DESCR"].astype(str) == f_prop_type]
+    if f_condition != "All":
+        filtered_df = filtered_df[filtered_df["condition"].astype(str) == f_condition]
+    filtered_df = filtered_df[
+        (filtered_df["yrbuilt"].fillna(0) >= f_year_range[0]) &
+        (filtered_df["yrbuilt"].fillna(9999) <= f_year_range[1])
+    ]
+    filtered_df = filtered_df[
+        (filtered_df["TAX_MARKET_TOTAL"].fillna(0) >= f_value_range[0]) &
+        (filtered_df["TAX_MARKET_TOTAL"].fillna(0) <= f_value_range[1])
+    ]
 
-        if guided_choice == "Properties in a specific neighborhood":
-            g_col1, g_col2 = st.columns(2)
-            with g_col1:
-                g_neighborhood = st.selectbox("Neighborhood", ["All"] + sorted(df["neighborhood"].unique().tolist()))
-            with g_col2:
-                g_ward = st.selectbox("Ward", ["All"] + sorted(df["ward"].dropna().unique().astype(int).astype(str).tolist()))
-            if g_neighborhood != "All":
-                filtered_df = filtered_df[filtered_df["neighborhood"] == g_neighborhood]
-            if g_ward != "All":
-                filtered_df = filtered_df[filtered_df["ward"] == int(g_ward)]
+    # Quick toggles
+    if f_vacant:
+        filtered_df = filtered_df[filtered_df["combovac"].fillna(0) == 1]
+    if f_violations:
+        filtered_df = filtered_df[filtered_df["violation"].fillna(0) == 1]
+    if f_tax_del:
+        filtered_df = filtered_df[filtered_df["NET_TAX_DELQ_DUE"].fillna(0) > 0]
+    if f_foreclosure_flag:
+        filtered_df = filtered_df[filtered_df["FORECLOSURE_FLAG"].fillna(0) == 1]
 
-        elif guided_choice == "Properties with certain characteristics":
-            g_col1, g_col2, g_col3 = st.columns(3)
-            with g_col1:
-                g_prop_type = st.selectbox("Property Type", ["All"] + sorted(df["property_type"].unique().tolist()))
-            with g_col2:
-                yr_min, yr_max = int(df["year_built"].min()), int(df["year_built"].max())
-                g_year_range = st.slider("Year Built", yr_min, yr_max, (yr_min, yr_max))
-            with g_col3:
-                g_condition = st.selectbox("Condition", ["All"] + sorted(df["property_condition"].dropna().unique().tolist()))
-            if g_prop_type != "All":
-                filtered_df = filtered_df[filtered_df["property_type"] == g_prop_type]
-            filtered_df = filtered_df[(filtered_df["year_built"] >= g_year_range[0]) & (filtered_df["year_built"] <= g_year_range[1])]
-            if g_condition != "All":
-                filtered_df = filtered_df[filtered_df["property_condition"] == g_condition]
+    # Advanced: Property Characteristics
+    if f_style != "All":
+        filtered_df = filtered_df[filtered_df["style"].astype(str) == f_style]
+    if f_stories != "All":
+        filtered_df = filtered_df[filtered_df["numstory"].astype(str) == f_stories]
+    if f_zone != "All":
+        filtered_df = filtered_df[filtered_df["zone_desc"].astype(str) == f_zone]
+    if f_pclass != "All":
+        filtered_df = filtered_df[filtered_df["pclass"].astype(str) == f_pclass]
+    if f_bed != "All":
+        filtered_df = filtered_df[filtered_df["bedrooms"].astype(str) == f_bed]
+    if f_bath != "All":
+        filtered_df = filtered_df[filtered_df["baths"].astype(str) == f_bath]
+    filtered_df = filtered_df[
+        (filtered_df["basesqft"].fillna(0) >= f_sqft[0]) &
+        (filtered_df["basesqft"].fillna(0) <= f_sqft[1])
+    ]
 
-        elif guided_choice == "Properties by owner type":
-            g_col1, g_col2 = st.columns(2)
-            with g_col1:
-                g_owner = st.selectbox("Owner Type", ["All"] + sorted(df["owner_type"].unique().tolist()))
-            with g_col2:
-                g_vacancy = st.selectbox("Vacancy Status", ["All"] + sorted(df["vacancy_status"].dropna().unique().tolist()))
-            if g_owner != "All":
-                filtered_df = filtered_df[filtered_df["owner_type"] == g_owner]
-            if g_vacancy != "All":
-                filtered_df = filtered_df[filtered_df["vacancy_status"] == g_vacancy]
+    # Advanced: Values & Taxes
+    if f_homestead:
+        filtered_df = filtered_df[filtered_df["HOMESTEAD_FLAG"].fillna(0) == 1]
+    if f_payment_plan:
+        filtered_df = filtered_df[filtered_df["PAYMENT_PLAN_FLAG"].fillna(0) == 1]
+    if f_cert_pend:
+        filtered_df = filtered_df[filtered_df["CERT_PEND_FLAG"].fillna(0) == 1]
+    if f_cert_sold:
+        filtered_df = filtered_df[filtered_df["CERT_SOLD_FLAG"].fillna(0) == 1]
+    if f_taxabate != "All":
+        filtered_df = filtered_df[filtered_df["taxabate"].astype(str) == f_taxabate]
+    if f_bor != "All":
+        filtered_df = filtered_df[filtered_df["BOR_STATUS"].astype(str) == f_bor]
 
-        elif guided_choice == "Properties with violations or permits":
-            g_col1, g_col2, g_col3 = st.columns(3)
-            with g_col1:
-                g_lead = st.checkbox("Has lead violations")
-            with g_col2:
-                g_building = st.checkbox("Has building violations")
-            with g_col3:
-                g_code = st.checkbox("Has code violations")
-            if g_lead:
-                filtered_df = filtered_df[filtered_df["lead_violations"] > 0]
-            if g_building:
-                filtered_df = filtered_df[filtered_df["building_violations"] > 0]
-            if g_code:
-                filtered_df = filtered_df[filtered_df["code_violations"] > 0]
+    # Advanced: Violations
+    if f_active_condemn:
+        filtered_df = filtered_df[filtered_df["active_condemn"].fillna(0) == 1]
+    if f_bh_lead:
+        filtered_df = filtered_df[filtered_df["cod_current_bh_lead_violations"].fillna("").astype(str).str.strip().replace("nan","") != ""]
+    if f_cdc_comp:
+        filtered_df = filtered_df[filtered_df["cdc_comp"].fillna(0) == 1]
+    if f_council_comp:
+        filtered_df = filtered_df[filtered_df["council_comp"].fillna(0) == 1]
+    if f_vtype != "All":
+        filtered_df = filtered_df[filtered_df["violation_vtype"].astype(str) == f_vtype]
+    if f_vtask != "All":
+        filtered_df = filtered_df[filtered_df["violation_task_status"].astype(str) == f_vtask]
 
-            g_col4, g_col5 = st.columns(2)
-            with g_col4:
-                g_foreclosure = st.selectbox("Foreclosure Status", ["All"] + sorted(df["foreclosure_status"].dropna().unique().tolist()))
-            with g_col5:
-                g_tax_del = st.checkbox("Tax delinquent only")
-            if g_foreclosure != "All":
-                filtered_df = filtered_df[filtered_df["foreclosure_status"] == g_foreclosure]
-            if g_tax_del:
-                filtered_df = filtered_df[filtered_df["tax_delinquent"] == True]
+    # Advanced: Evictions
+    if f_evict_status != "All":
+        filtered_df = filtered_df[filtered_df["evict_case_status"].astype(str) == f_evict_status]
+    if f_evict_disp != "All":
+        filtered_df = filtered_df[filtered_df["evict_disp_status"].astype(str) == f_evict_disp]
+    if f_evict_yr != "All":
+        filtered_df = filtered_df[filtered_df["evict_yr"].astype(str) == f_evict_yr]
+    if f_evict_multi:
+        filtered_df = filtered_df[filtered_df["evict_case_number"].fillna("").astype(str).str.contains(",", regex=False)]
 
-        else:  # "Custom advanced search"
-            st.info("Use the Advanced Filters tab for full control over all filters.")
+    # Advanced: Lead
+    if f_lsc != "All":
+        filtered_df = filtered_df[filtered_df["lsc_stat"].astype(str) == f_lsc]
+    if f_lead_rollout != "All":
+        filtered_df = filtered_df[filtered_df["lead_rollout"].astype(str) == f_lead_rollout]
 
-    # -- PATH 2: ADVANCED FILTERS --
-    # All filters visible at once, with an expandable "More Filters" section.
-    else:
-        # Quick filters (always visible)
-        qf1, qf2, qf3 = st.columns(3)
-        with qf1:
-            adv_neighborhood = st.selectbox("Neighborhood", ["All"] + sorted(df["neighborhood"].unique().tolist()), key="adv_n")
-        with qf2:
-            adv_prop_type = st.selectbox("Property Type", ["All"] + sorted(df["property_type"].unique().tolist()), key="adv_pt")
-        with qf3:
-            yr_min, yr_max = int(df["year_built"].min()), int(df["year_built"].max())
-            adv_year_range = st.slider("Year Built", yr_min, yr_max, (yr_min, yr_max), key="adv_yr")
+    # Advanced: Foreclosure & Forfeiture
+    if f_fo_status != "All":
+        filtered_df = filtered_df[filtered_df["lstatus"].astype(str) == f_fo_status]
+    if f_cdesig != "All":
+        filtered_df = filtered_df[filtered_df["cdesig"].astype(str) == f_cdesig]
+    if f_has_fo_deed:
+        filtered_df = filtered_df[filtered_df["fo_deed_count"].fillna(0) > 0]
 
-        if adv_neighborhood != "All":
-            filtered_df = filtered_df[filtered_df["neighborhood"] == adv_neighborhood]
-        if adv_prop_type != "All":
-            filtered_df = filtered_df[filtered_df["property_type"] == adv_prop_type]
-        filtered_df = filtered_df[(filtered_df["year_built"] >= adv_year_range[0]) & (filtered_df["year_built"] <= adv_year_range[1])]
+    # Advanced: Land Bank
+    if f_city_lb:
+        filtered_df = filtered_df[filtered_df["city_lb_flag"].fillna(0) == 1]
+    if f_cclrc:
+        filtered_df = filtered_df[filtered_df["cclrc"].fillna(0) == 1]
+    if f_demo_status != "All":
+        filtered_df = filtered_df[filtered_df["demo_status"].astype(str) == f_demo_status]
+    if f_rehab_status != "All":
+        filtered_df = filtered_df[filtered_df["rehab_status"].astype(str) == f_rehab_status]
+    if f_disp_status != "All":
+        filtered_df = filtered_df[filtered_df["disp_status"].astype(str) == f_disp_status]
 
-        # Expandable extra filters
-        with st.expander("More Filters"):
-            af1, af2, af3, af4 = st.columns(4)
-            with af1:
-                adv_owner = st.selectbox("Owner Type", ["All"] + sorted(df["owner_type"].unique().tolist()), key="adv_ot")
-            with af2:
-                adv_vacancy = st.selectbox("Vacancy Status", ["All"] + sorted(df["vacancy_status"].dropna().unique().tolist()), key="adv_vs")
-            with af3:
-                adv_condition = st.selectbox("Condition", ["All"] + sorted(df["property_condition"].dropna().unique().tolist()), key="adv_cond")
-            with af4:
-                adv_foreclosure = st.selectbox("Foreclosure", ["All"] + sorted(df["foreclosure_status"].dropna().unique().tolist()), key="adv_fc")
+    # Advanced: Geographies
+    if f_ward != "All":
+        filtered_df = filtered_df[filtered_df["ward2025"].astype(str) == f_ward]
+    if f_zip != "All":
+        filtered_df = filtered_df[filtered_df["zip"].astype(str) == f_zip]
+    if f_region != "All":
+        filtered_df = filtered_df[filtered_df["cuyregion"].astype(str) == f_region]
+    if f_cia != "All":
+        filtered_df = filtered_df[filtered_df["cia14_name"].astype(str) == f_cia]
 
-            af5, af6, af7 = st.columns(3)
-            with af5:
-                val_min, val_max = int(df["property_value"].min()), int(df["property_value"].max())
-                adv_value_range = st.slider("Property Value ($)", val_min, val_max, (val_min, val_max), step=5000, key="adv_val")
-            with af6:
-                adv_lead = st.checkbox("Has lead violations", key="adv_lead")
-            with af7:
-                adv_tax_del = st.checkbox("Tax delinquent only", key="adv_tax")
+    # Advanced: Rental & Housing
+    if f_rental:
+        filtered_df = filtered_df[filtered_df["rentalreg"].fillna(0) == 1]
+    if f_sect8:
+        filtered_df = filtered_df[filtered_df["sect8"].fillna(0) == 1]
+    if f_hud:
+        filtered_df = filtered_df[filtered_df["hud"].fillna(0) == 1]
+    if f_out_of_state:
+        filtered_df = filtered_df[~filtered_df["MAIL_STATE"].fillna("").isin(["OH", "/", ""])]
 
-            if adv_owner != "All":
-                filtered_df = filtered_df[filtered_df["owner_type"] == adv_owner]
-            if adv_vacancy != "All":
-                filtered_df = filtered_df[filtered_df["vacancy_status"] == adv_vacancy]
-            if adv_condition != "All":
-                filtered_df = filtered_df[filtered_df["property_condition"] == adv_condition]
-            if adv_foreclosure != "All":
-                filtered_df = filtered_df[filtered_df["foreclosure_status"] == adv_foreclosure]
-            filtered_df = filtered_df[(filtered_df["property_value"] >= adv_value_range[0]) & (filtered_df["property_value"] <= adv_value_range[1])]
-            if adv_lead:
-                filtered_df = filtered_df[filtered_df["lead_violations"] > 0]
-            if adv_tax_del:
-                filtered_df = filtered_df[filtered_df["tax_delinquent"] == True]
-
-    # -- RESULTS SECTION --
+    # ---- Results Header Stats ----
     st.markdown("---")
-
-    # Summary stat boxes
     total = len(filtered_df)
-    avg_val = int(filtered_df["property_value"].mean()) if total > 0 else 0
-    vacancy_rate = round((filtered_df["vacancy_status"] == "Vacant").sum() / total * 100, 1) if total > 0 else 0
-    total_violations = int(filtered_df["lead_violations"].sum() + filtered_df["building_violations"].sum() + filtered_df["code_violations"].sum()) if total > 0 else 0
+    avg_val = int(filtered_df["TAX_MARKET_TOTAL"].mean()) if total > 0 else 0
+    vacancy_pct = round(filtered_df["combovac"].fillna(0).sum() / total * 100, 1) if total > 0 else 0
+    violation_ct = int(filtered_df["violation"].fillna(0).sum()) if total > 0 else 0
 
     s1, s2, s3, s4 = st.columns(4)
     with s1:
-        st.markdown(f"""<div class="stat-box"><div class="stat-value">{total:,}</div><div class="stat-label">Properties</div></div>""", unsafe_allow_html=True)
+        st.markdown(f'<div class="stat-box"><div class="stat-value">{total:,}</div><div class="stat-label">Properties</div></div>', unsafe_allow_html=True)
     with s2:
-        st.markdown(f"""<div class="stat-box"><div class="stat-value">${avg_val:,}</div><div class="stat-label">Avg Value</div></div>""", unsafe_allow_html=True)
+        st.markdown(f'<div class="stat-box"><div class="stat-value">${avg_val:,}</div><div class="stat-label">Avg Market Value</div></div>', unsafe_allow_html=True)
     with s3:
-        st.markdown(f"""<div class="stat-box"><div class="stat-value">{vacancy_rate}%</div><div class="stat-label">Vacancy Rate</div></div>""", unsafe_allow_html=True)
+        st.markdown(f'<div class="stat-box"><div class="stat-value">{vacancy_pct}%</div><div class="stat-label">Vacancy Rate</div></div>', unsafe_allow_html=True)
     with s4:
-        st.markdown(f"""<div class="stat-box"><div class="stat-value">{total_violations:,}</div><div class="stat-label">Total Violations</div></div>""", unsafe_allow_html=True)
+        st.markdown(f'<div class="stat-box"><div class="stat-value">{violation_ct:,}</div><div class="stat-label">Properties w/ Violations</div></div>', unsafe_allow_html=True)
 
     st.markdown("")
 
-    # Column picker — lets user choose which columns to show in the table
-    all_columns = filtered_df.columns.tolist()
-    default_columns = ["parcel_number", "house_number", "street_name", "neighborhood", "property_type", "property_value", "owner_type", "vacancy_status"]
-    display_columns = st.multiselect(
-        "Select columns to display",
-        all_columns,
-        default=[c for c in default_columns if c in all_columns],
-    )
-    if not display_columns:
-        display_columns = default_columns
+    # ---- Column Selector ----
+    with st.expander("Customize Columns"):
+        preset_sel = st.radio(
+            "Column preset",
+            list(PRESET_COLUMNS.keys()) + ["Custom"],
+            horizontal=True,
+            key="col_preset",
+        )
+        if preset_sel != "Custom":
+            # Use preset; filter to cols that actually exist
+            display_columns = [c for c in PRESET_COLUMNS[preset_sel] if c in df.columns]
+        else:
+            custom_selections = []
+            for group_name, group_cols in COL_GROUPS.items():
+                valid_cols = [c for c in group_cols if c in df.columns]
+                if not valid_cols:
+                    continue
+                with st.expander(f"{group_name}"):
+                    gcol1, gcol2 = st.columns([1, 3])
+                    with gcol1:
+                        sel_all = st.button("All", key=f"all_{group_name}")
+                        sel_none = st.button("None", key=f"none_{group_name}")
+                    with gcol2:
+                        default_checked = valid_cols if group_name == "Core" else []
+                        selected = st.multiselect(
+                            group_name,
+                            valid_cols,
+                            default=default_checked,
+                            label_visibility="collapsed",
+                            key=f"ms_{group_name}",
+                        )
+                    custom_selections.extend(selected)
+            display_columns = custom_selections if custom_selections else [c for c in PRESET_COLUMNS["Basic Info"] if c in df.columns]
 
-    # Results tabs
+    # ---- Results Tabs ----
     tab_table, tab_map, tab_charts, tab_summary = st.tabs(["Table View", "Map View", "Charts", "Summary"])
 
     with tab_table:
-        st.dataframe(
-            filtered_df[display_columns].reset_index(drop=True),
-            use_container_width=True,
-            hide_index=True,
-            height=500,
-        )
+        if total > 0:
+            st.dataframe(
+                filtered_df[display_columns].reset_index(drop=True),
+                use_container_width=True,
+                hide_index=True,
+                height=520,
+            )
+        else:
+            st.info("No properties match your filters.")
 
     with tab_map:
-        if total > 0 and total <= 5000:
-            st.map(
-                filtered_df[["latitude", "longitude"]].dropna(),
-                latitude="latitude",
-                longitude="longitude",
-            )
-        elif total > 5000:
-            st.warning("Too many points to display. Apply more filters to narrow results.")
+        _MAP_LIMIT = 2000
+        if total == 0:
+            st.info("No properties to display. Adjust your filters.")
+        elif total > _MAP_LIMIT:
+            st.warning(f"{total:,} properties match — narrow your filters to {_MAP_LIMIT:,} or fewer to display on the map.")
         else:
-            st.info("No properties to display on the map.")
+            import folium
+            from streamlit_folium import st_folium
+            import geopandas as gpd
+
+            _map_cols = ["LATITUDE", "LONGITUDE", "NEIGHBOR10", "number", "street", "TAX_MARKET_TOTAL", "combovac"]
+            map_df = filtered_df[[c for c in _map_cols if c in filtered_df.columns]].copy()
+            map_df = map_df.dropna(subset=["LATITUDE", "LONGITUDE"])
+
+            if map_df.empty:
+                st.info("No properties with coordinates to display.")
+            else:
+                center_lat = map_df["LATITUDE"].mean()
+                center_lng = map_df["LONGITUDE"].mean()
+
+                m = folium.Map(
+                    location=[center_lat, center_lng],
+                    zoom_start=13,
+                    tiles="CartoDB positron",
+                )
+
+                # Neighbourhood polygon outlines for spatial context
+                @st.cache_data
+                def _load_hoods_ctx():
+                    gdf = gpd.read_file("data/cuy_nei20_NAD83.shp")
+                    return gdf.to_crs(epsg=4326)
+
+                gdf_ctx = _load_hoods_ctx()
+                folium.GeoJson(
+                    gdf_ctx.__geo_interface__,
+                    style_function=lambda x: {
+                        "fillColor": "transparent",
+                        "color": "#aaaaaa",
+                        "weight": 1,
+                        "fillOpacity": 0,
+                    },
+                ).add_to(m)
+
+                # Property dots, coloured by vacancy
+                for _, row in map_df.iterrows():
+                    is_vacant = int(row.get("combovac", 0) or 0) == 1
+                    color = "#e03127" if is_vacant else "#003071"
+                    num = str(row.get("number", "")).strip()
+                    street = str(row.get("street", "")).strip()
+                    address = f"{num} {street}".strip() or "Unknown Address"
+                    val = row.get("TAX_MARKET_TOTAL")
+                    val_str = f"${int(val):,}" if pd.notna(val) and val > 0 else "N/A"
+                    vacant_label = '<span style="color:#e03127">&#9888; Vacant</span>' if is_vacant else "Occupied"
+                    tip = (
+                        f"<b>{address}</b><br>"
+                        f"{row.get('NEIGHBOR10', '')}<br>"
+                        f"Market Value: {val_str}<br>"
+                        f"{vacant_label}"
+                    )
+                    folium.CircleMarker(
+                        location=[row["LATITUDE"], row["LONGITUDE"]],
+                        radius=5,
+                        color=None,
+                        fill=True,
+                        fill_color=color,
+                        fill_opacity=0.75,
+                        tooltip=folium.Tooltip(tip),
+                    ).add_to(m)
+
+                # Legend
+                legend_html = """
+                <div style="position:fixed;bottom:30px;right:30px;z-index:9999;background:white;
+                     padding:10px 14px;border-radius:8px;border:1px solid #ddd;font-size:12px;
+                     font-family:Arial,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,0.12);">
+                    <div style="font-weight:700;margin-bottom:6px;color:#003071;">Vacancy Status</div>
+                    <div><span style="display:inline-block;width:11px;height:11px;border-radius:50%;
+                         background:#003071;margin-right:7px;vertical-align:middle;"></span>Occupied</div>
+                    <div style="margin-top:4px"><span style="display:inline-block;width:11px;height:11px;
+                         border-radius:50%;background:#e03127;margin-right:7px;vertical-align:middle;"></span>Vacant</div>
+                </div>
+                """
+                m.get_root().html.add_child(folium.Element(legend_html))
+
+                st.caption(f"Showing {len(map_df):,} properties  ·  Navy = Occupied  ·  Red = Vacant")
+                st_folium(m, width=None, height=520, use_container_width=True, returned_objects=[])
 
     with tab_charts:
         if total > 0:
+            import plotly.express as px
+
             ch1, ch2 = st.columns(2)
             with ch1:
-                type_counts = filtered_df["property_type"].value_counts()
-                st.bar_chart(type_counts, color="#003071")
-                st.caption("Properties by Type")
+                type_counts = filtered_df["CLASSIFICATION_DESCR"].value_counts().head(10)
+                df_p = type_counts.reset_index()
+                df_p.columns = ["Category", "Count"]
+                df_p = df_p.sort_values("Count", ascending=True)
+                fig = px.bar(
+                    df_p, x="Count", y="Category", orientation="h",
+                    title="Properties by Type (top 10)",
+                    color_discrete_sequence=["#003071"],
+                )
+                fig.update_layout(
+                    plot_bgcolor="white", paper_bgcolor="white", height=320,
+                    font=dict(family="Inter, Arial, sans-serif", size=12),
+                    title_font=dict(size=13, color="#003071"),
+                    margin=dict(l=10, r=20, t=40, b=10),
+                    xaxis_title="", yaxis_title="",
+                )
+                fig.update_traces(hovertemplate="%{y}<br><b>%{x:,}</b><extra></extra>")
+                st.plotly_chart(fig, use_container_width=True)
             with ch2:
-                owner_counts = filtered_df["owner_type"].value_counts()
-                st.bar_chart(owner_counts, color="#003071")
-                st.caption("Properties by Owner Type")
+                nbh_counts = filtered_df["NEIGHBOR10"].value_counts().head(10)
+                st.bar_chart(nbh_counts, color="#FFD700")
+                st.caption("Properties by Neighborhood (top 10)")
 
             ch3, ch4 = st.columns(2)
             with ch3:
-                vacancy_counts = filtered_df["vacancy_status"].value_counts()
-                st.bar_chart(vacancy_counts, color="#003071")
-                st.caption("Vacancy Status")
-            with ch4:
-                condition_counts = filtered_df["property_condition"].value_counts()
-                st.bar_chart(condition_counts, color="#003071")
+                cond_counts = filtered_df["condition"].value_counts()
+                st.bar_chart(cond_counts, color="#003071")
                 st.caption("Property Condition")
+            with ch4:
+                region_counts = filtered_df["cuyregion"].value_counts()
+                st.bar_chart(region_counts, color="#FFD700")
+                st.caption("By Cuyahoga Region")
         else:
             st.info("No data to chart. Adjust your filters.")
 
@@ -844,56 +1138,33 @@ if current_page == "datasets":
             su1, su2 = st.columns(2)
             with su1:
                 st.markdown("**Value Statistics**")
-                st.dataframe(
-                    filtered_df[["property_value", "assessed_value", "annual_tax", "last_sale_price"]].describe().round(0),
-                    use_container_width=True,
-                )
+                val_cols = [c for c in ["TAX_MARKET_TOTAL", "TAX_MARKET_LAND", "TAX_MARKET_IMPROVEMENT", "currentvalue2023", "lsaleamt"] if c in filtered_df.columns]
+                st.dataframe(filtered_df[val_cols].describe().round(0), use_container_width=True)
             with su2:
                 st.markdown("**Top Neighborhoods**")
-                top_neighborhoods = filtered_df["neighborhood"].value_counts().head(10)
-                st.dataframe(top_neighborhoods, use_container_width=True)
-
+                st.dataframe(filtered_df["NEIGHBOR10"].value_counts().head(10).rename("Count"), use_container_width=True)
             su3, su4 = st.columns(2)
             with su3:
-                st.markdown("**Violation Breakdown**")
-                violation_summary = pd.DataFrame({
-                    "Violation Type": ["Lead", "Building", "Code"],
-                    "Properties Affected": [
-                        int((filtered_df["lead_violations"] > 0).sum()),
-                        int((filtered_df["building_violations"] > 0).sum()),
-                        int((filtered_df["code_violations"] > 0).sum()),
-                    ],
-                    "Total Count": [
-                        int(filtered_df["lead_violations"].sum()),
-                        int(filtered_df["building_violations"].sum()),
-                        int(filtered_df["code_violations"].sum()),
-                    ],
-                })
-                st.dataframe(violation_summary, use_container_width=True, hide_index=True)
+                st.markdown("**Vacancy & Distress**")
+                distress = {
+                    "Vacant (combovac)": int(filtered_df["combovac"].fillna(0).sum()),
+                    "Vacant Lot (vl)": int(filtered_df["vl"].fillna(0).sum()),
+                    "Active Condemnation": int(filtered_df["active_condemn"].fillna(0).sum()),
+                    "In Foreclosure": int(filtered_df["FORECLOSURE_FLAG"].fillna(0).sum()),
+                    "Tax Delinquent": int((filtered_df["NET_TAX_DELQ_DUE"].fillna(0) > 0).sum()),
+                    "Has Violation": int(filtered_df["violation"].fillna(0).sum()),
+                    "City Land Bank": int(filtered_df["city_lb_flag"].fillna(0).sum()),
+                }
+                st.dataframe(pd.DataFrame.from_dict(distress, orient="index", columns=["Count"]), use_container_width=True)
             with su4:
-                st.markdown("**Foreclosure Status**")
-                fc_counts = filtered_df["foreclosure_status"].value_counts()
-                st.dataframe(fc_counts, use_container_width=True)
+                st.markdown("**Foreclosure Cases**")
+                fo_counts = filtered_df["lstatus"].value_counts()
+                st.dataframe(fo_counts.rename("Count"), use_container_width=True)
         else:
             st.info("No data to summarize. Adjust your filters.")
 
-    # -- EXPORT SECTION --
-    # Supports CSV, GeoJSON, and Shapefile (requires geopandas).
+    # ---- Export ----
     st.markdown("---")
-    st.markdown("""
-        <style>
-        [data-testid="stExpander"] details summary p {
-            font-size: 1.5rem !important;
-            font-weight: 700 !important;
-            color: #003071 !important;
-        }
-        [data-testid="stExpander"] details {
-            border: 2px solid #003071 !important;
-            border-radius: 8px !important;
-            padding: 0.3rem !important;
-        }
-        </style>
-    """, unsafe_allow_html=True)
     with st.expander("Export Options"):
         ex_col1, ex_col2 = st.columns(2)
         with ex_col1:
@@ -903,13 +1174,14 @@ if current_page == "datasets":
                 key="export_fmt",
             )
         with ex_col2:
-            export_columns = st.radio(
+            export_columns_opt = st.radio(
                 "Columns",
                 ["Selected columns only", "All available columns"],
                 key="export_cols",
             )
 
-        export_df = filtered_df if export_columns == "All available columns" else filtered_df[display_columns]
+        all_columns = filtered_df.columns.tolist()
+        export_df = filtered_df if export_columns_opt == "All available columns" else filtered_df[display_columns]
 
         if total == 0:
             st.warning("No data to export. Adjust your filters first.")
@@ -922,16 +1194,13 @@ if current_page == "datasets":
                 mime="text/csv",
             )
         elif export_format == "GeoJSON (mapping)":
-            source_df = filtered_df
             features = []
-            for _, row in source_df.iterrows():
-                lat = row.get("latitude")
-                lon = row.get("longitude")
+            for _, row in filtered_df.iterrows():
+                lat = row.get("LATITUDE")
+                lon = row.get("LONGITUDE")
                 if pd.notna(lat) and pd.notna(lon):
-                    if export_columns == "Selected columns only":
-                        props = {c: (row[c].item() if hasattr(row[c], "item") else row[c]) for c in display_columns if c not in ("latitude", "longitude")}
-                    else:
-                        props = {c: (row[c].item() if hasattr(row[c], "item") else row[c]) for c in all_columns if c not in ("latitude", "longitude")}
+                    cols_to_use = display_columns if export_columns_opt == "Selected columns only" else all_columns
+                    props = {c: (row[c].item() if hasattr(row[c], "item") else row[c]) for c in cols_to_use if c not in ("LATITUDE", "LONGITUDE")}
                     features.append({
                         "type": "Feature",
                         "geometry": {"type": "Point", "coordinates": [float(lon), float(lat)]},
@@ -944,27 +1213,22 @@ if current_page == "datasets":
                 file_name="nst_export.geojson",
                 mime="application/geo+json",
             )
-        else:  # Shapefile — requires geopandas + shapely
+        else:  # Shapefile
             try:
                 import geopandas as gpd
                 from shapely.geometry import Point
-
-                geo_rows = filtered_df.dropna(subset=["latitude", "longitude"])
-                geometry = [Point(lon, lat) for lat, lon in zip(geo_rows["latitude"], geo_rows["longitude"])]
-                if export_columns == "Selected columns only":
-                    cols = [c for c in display_columns if c not in ("latitude", "longitude")]
-                else:
-                    cols = [c for c in all_columns if c not in ("latitude", "longitude")]
-                gdf = gpd.GeoDataFrame(geo_rows[cols].reset_index(drop=True), geometry=geometry, crs="EPSG:4326")
-
+                geo_rows = filtered_df.dropna(subset=["LATITUDE", "LONGITUDE"])
+                geometry = [Point(lon, lat) for lat, lon in zip(geo_rows["LONGITUDE"], geo_rows["LATITUDE"])]
+                cols_to_use = [c for c in (display_columns if export_columns_opt == "Selected columns only" else all_columns) if c not in ("LATITUDE", "LONGITUDE")]
+                gdf = gpd.GeoDataFrame(geo_rows[cols_to_use].reset_index(drop=True), geometry=geometry, crs="EPSG:4326")
                 import tempfile, os, glob as glob_mod
                 with tempfile.TemporaryDirectory() as tmpdir:
                     shp_path = os.path.join(tmpdir, "nst_export.shp")
                     gdf.to_file(shp_path, driver="ESRI Shapefile")
                     buf = io.BytesIO()
                     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-                        for f in glob_mod.glob(os.path.join(tmpdir, "nst_export.*")):
-                            zf.write(f, os.path.basename(f))
+                        for f_path in glob_mod.glob(os.path.join(tmpdir, "nst_export.*")):
+                            zf.write(f_path, os.path.basename(f_path))
                     buf.seek(0)
                 st.download_button(
                     label=f"Download {len(geo_rows):,} features as Shapefile (.zip)",
@@ -973,16 +1237,12 @@ if current_page == "datasets":
                     mime="application/zip",
                 )
             except ImportError:
-                st.warning("Shapefile export requires `geopandas` and `shapely`. Install them with:")
+                st.warning("Shapefile export requires `geopandas` and `shapely`.")
                 st.code("pip install geopandas shapely", language="bash")
 
-    # -- Footer --
+    # ---- Footer ----
     st.markdown("---")
-    st.markdown("""
-        <div style="text-align: center; color: #666; padding: 2rem 0;">
-            <p>Powered by CWRU Poverty Center | Last Updated: January 2026</p>
-        </div>
-    """, unsafe_allow_html=True)
+    st.markdown('<div style="text-align: center; color: #666; padding: 2rem 0;"><p>Powered by CWRU Poverty Center | Last Updated: March 2026</p></div>', unsafe_allow_html=True)
 
 
 elif current_page == "maps":
@@ -997,13 +1257,20 @@ elif current_page == "maps":
     # ========================================================
     import folium
     from streamlit_folium import st_folium
+    import geopandas as gpd
 
     # -- Load data --
     @st.cache_data
     def load_map_data():
-        return pd.read_csv("data/nst_sample_data.csv")
+        return pd.read_csv("data/nstsample.csv", low_memory=False)
+
+    @st.cache_data
+    def load_neighborhoods():
+        gdf = gpd.read_file("data/cuy_nei20_NAD83.shp")
+        return gdf.to_crs(epsg=4326)
 
     df_map = load_map_data()
+    gdf_hoods = load_neighborhoods()
 
     # Check if a specific neighborhood was selected via URL
     selected_hood = query_params.get("hood", None)
@@ -1119,327 +1386,132 @@ elif current_page == "maps":
         </style>
     """, unsafe_allow_html=True)
 
-    # --------------------------------------------------------
-    #  STATE 1: NEIGHBORHOOD PROFILE (when ?hood= is set)
-    # --------------------------------------------------------
-    if selected_hood and selected_hood in df_map["neighborhood"].unique():
-        hood_df = df_map[df_map["neighborhood"] == selected_hood]
+    # Map overview — always shown; clicks navigate to the dedicated neighborhood page
+    # Breadcrumb
+    st.markdown("""
+        <div class="breadcrumb">
+            <a href="?auth=1&page=home" target="_self">Home</a> &nbsp;/&nbsp; <strong>Map Explorer</strong>
+        </div>
+    """, unsafe_allow_html=True)
 
-        # Breadcrumb
-        st.markdown(f"""
-            <div class="breadcrumb">
-                <a href="?auth=1&page=home" target="_self">Home</a> &nbsp;/&nbsp;
-                <a href="?auth=1&page=maps" target="_self">Map Explorer</a> &nbsp;/&nbsp;
-                <strong>{selected_hood}</strong>
-            </div>
-        """, unsafe_allow_html=True)
+    # Layout: left sidebar (1) + map (2.5)
+    panel_col, map_col = st.columns([1, 2.5])
 
-        st.markdown('<a href="?auth=1&page=maps" target="_self" class="hood-back-link">&larr; Back to Map</a>', unsafe_allow_html=True)
+    with panel_col:
+        st.markdown('<div class="map-page-header" style="font-size:1.6rem;">Map Explorer</div>', unsafe_allow_html=True)
+        st.markdown('<div class="map-page-subtitle" style="font-size:0.95rem;">Cleveland Neighborhood Data</div>', unsafe_allow_html=True)
 
-        # Header with ward/zip info
-        wards_in_hood = sorted(hood_df["ward"].dropna().unique().astype(int).tolist())
-        zips_in_hood = sorted(hood_df["zip_code"].dropna().unique().astype(int).tolist())
-        st.markdown(f'<div class="hood-profile-header">{selected_hood}</div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="hood-profile-sub">Ward{"s" if len(wards_in_hood) > 1 else ""} {", ".join(str(w) for w in wards_in_hood)} &nbsp;|&nbsp; ZIP{"s" if len(zips_in_hood) > 1 else ""} {", ".join(str(z) for z in zips_in_hood)}</div>', unsafe_allow_html=True)
-
-        # -- Key metrics (3x3 grid) --
-        n_total = len(hood_df)
-        n_avg_val = int(hood_df["property_value"].mean()) if n_total > 0 else 0
-        n_median_val = int(hood_df["property_value"].median()) if n_total > 0 else 0
-        n_vacancy = round((hood_df["vacancy_status"] == "Vacant").sum() / n_total * 100, 1) if n_total > 0 else 0
-        n_violations = int(hood_df["lead_violations"].sum() + hood_df["building_violations"].sum() + hood_df["code_violations"].sum()) if n_total > 0 else 0
-        n_foreclosure = int((hood_df["foreclosure_status"] != "None").sum()) if n_total > 0 else 0
-        n_tax_del = int(hood_df["tax_delinquent"].sum()) if n_total > 0 else 0
-        n_median_income = int(hood_df["median_income_tract"].mean()) if n_total > 0 else 0
-        n_poverty_rate = round(hood_df["poverty_rate_tract"].mean(), 1) if n_total > 0 else 0
-
-        st.markdown(f"""
-            <div class="hood-stat-grid">
-                <div class="hood-stat-card">
-                    <div class="hood-stat-card-value">{n_total:,}</div>
-                    <div class="hood-stat-card-label">Total Properties</div>
-                </div>
-                <div class="hood-stat-card">
-                    <div class="hood-stat-card-value">${n_avg_val:,}</div>
-                    <div class="hood-stat-card-label">Avg Property Value</div>
-                </div>
-                <div class="hood-stat-card">
-                    <div class="hood-stat-card-value">${n_median_val:,}</div>
-                    <div class="hood-stat-card-label">Median Property Value</div>
-                </div>
-                <div class="hood-stat-card">
-                    <div class="hood-stat-card-value">{n_vacancy}%</div>
-                    <div class="hood-stat-card-label">Vacancy Rate</div>
-                </div>
-                <div class="hood-stat-card">
-                    <div class="hood-stat-card-value">{n_violations:,}</div>
-                    <div class="hood-stat-card-label">Total Violations</div>
-                </div>
-                <div class="hood-stat-card">
-                    <div class="hood-stat-card-value">{n_foreclosure:,}</div>
-                    <div class="hood-stat-card-label">Foreclosures</div>
-                </div>
-                <div class="hood-stat-card">
-                    <div class="hood-stat-card-value">{n_tax_del:,}</div>
-                    <div class="hood-stat-card-label">Tax Delinquent</div>
-                </div>
-                <div class="hood-stat-card">
-                    <div class="hood-stat-card-value">${n_median_income:,}</div>
-                    <div class="hood-stat-card-label">Median Income (Tract)</div>
-                </div>
-                <div class="hood-stat-card">
-                    <div class="hood-stat-card-value">{n_poverty_rate}%</div>
-                    <div class="hood-stat-card-label">Poverty Rate (Tract)</div>
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
-
-        # -- Tabs: Overview, Property Data, Download --
-        tab_overview, tab_data, tab_download = st.tabs(["Overview", "Property Data", "Download"])
-
-        with tab_overview:
-            # Charts: property type + owner type
-            st.markdown('<div class="hood-section-title">Property Breakdown</div>', unsafe_allow_html=True)
-            ov1, ov2 = st.columns(2)
-            with ov1:
-                st.bar_chart(hood_df["property_type"].value_counts(), color="#003071")
-                st.caption("Properties by Type")
-            with ov2:
-                st.bar_chart(hood_df["owner_type"].value_counts(), color="#003071")
-                st.caption("Properties by Owner Type")
-
-            # Charts: vacancy + condition
-            st.markdown('<div class="hood-section-title">Property Status</div>', unsafe_allow_html=True)
-            ov3, ov4 = st.columns(2)
-            with ov3:
-                st.bar_chart(hood_df["vacancy_status"].value_counts(), color="#003071")
-                st.caption("Vacancy Status")
-            with ov4:
-                st.bar_chart(hood_df["property_condition"].value_counts(), color="#003071")
-                st.caption("Property Condition")
-
-            # Violations table + foreclosure chart
-            st.markdown('<div class="hood-section-title">Violations & Foreclosure</div>', unsafe_allow_html=True)
-            ov5, ov6 = st.columns(2)
-            with ov5:
-                violation_summary = pd.DataFrame({
-                    "Type": ["Lead", "Building", "Code"],
-                    "Properties Affected": [
-                        int((hood_df["lead_violations"] > 0).sum()),
-                        int((hood_df["building_violations"] > 0).sum()),
-                        int((hood_df["code_violations"] > 0).sum()),
-                    ],
-                })
-                st.dataframe(violation_summary, use_container_width=True, hide_index=True)
-            with ov6:
-                st.bar_chart(hood_df["foreclosure_status"].value_counts(), color="#003071")
-                st.caption("Foreclosure Status")
-
-            # Value statistics table
-            st.markdown('<div class="hood-section-title">Value Statistics</div>', unsafe_allow_html=True)
-            st.dataframe(
-                hood_df[["property_value", "assessed_value", "annual_tax", "last_sale_price"]].describe().round(0),
-                use_container_width=True,
-            )
-
-            # Folium map zoomed into this neighborhood
-            st.markdown('<div class="hood-section-title">Neighborhood Map</div>', unsafe_allow_html=True)
-            hood_map_data = hood_df[["latitude", "longitude"]].dropna()
-            if len(hood_map_data) > 0:
-                center_lat = hood_map_data["latitude"].mean()
-                center_lon = hood_map_data["longitude"].mean()
-                m = folium.Map(location=[center_lat, center_lon], zoom_start=14, tiles="CartoDB positron")
-                for _, prop in hood_df.iterrows():
-                    if pd.notna(prop["latitude"]) and pd.notna(prop["longitude"]):
-                        folium.CircleMarker(
-                            location=[prop["latitude"], prop["longitude"]],
-                            radius=5,
-                            color="#003071",
-                            fill=True,
-                            fillColor="#003071",
-                            fillOpacity=0.5,
-                            tooltip=f"{int(prop['house_number'])} {prop['street_name']}",
-                            popup=folium.Popup(
-                                f"<b>{int(prop['house_number'])} {prop['street_name']}</b><br>"
-                                f"Type: {prop['property_type']}<br>"
-                                f"Value: ${int(prop['property_value']):,}<br>"
-                                f"Owner: {prop['owner_type']}<br>"
-                                f"Status: {prop['vacancy_status']}",
-                                max_width=200,
-                            ),
-                        ).add_to(m)
-                st_folium(m, width=None, height=450, use_container_width=True)
-
-        with tab_data:
-            st.markdown(f"**{n_total:,} properties in {selected_hood}**")
-
-            # Column picker
-            all_cols = hood_df.columns.tolist()
-            default_cols = ["parcel_number", "house_number", "street_name", "property_type", "property_value", "owner_type", "vacancy_status", "property_condition"]
-            show_cols = st.multiselect("Select columns to display", all_cols, default=[c for c in default_cols if c in all_cols], key="hood_cols")
-            if not show_cols:
-                show_cols = default_cols
-
-            st.dataframe(
-                hood_df[show_cols].reset_index(drop=True),
-                use_container_width=True,
-                hide_index=True,
-                height=500,
-            )
-
-        with tab_download:
-            st.markdown(f"### Download {selected_hood} Data")
-            st.markdown(f"Export all **{n_total:,} properties** in {selected_hood}.")
-
-            dl_col1, dl_col2 = st.columns(2)
-            with dl_col1:
-                dl_format = st.radio("Format", ["CSV (Excel-friendly)", "GeoJSON (mapping)"], key="hood_dl_fmt")
-            with dl_col2:
-                dl_columns = st.radio("Columns", ["All columns", "Selected columns only"], key="hood_dl_cols")
-
-            if dl_columns == "Selected columns only":
-                export_hood_df = hood_df[show_cols] if 'show_cols' in dir() else hood_df
-            else:
-                export_hood_df = hood_df
-
-            if dl_format == "CSV (Excel-friendly)":
-                csv_data = export_hood_df.to_csv(index=False)
-                st.download_button(
-                    label=f"Download {n_total:,} properties as CSV",
-                    data=csv_data,
-                    file_name=f"nst_{selected_hood.lower().replace(' ', '_')}.csv",
-                    mime="text/csv",
-                )
-            else:  # GeoJSON
-                features = []
-                for _, row in hood_df.iterrows():
-                    lat = row.get("latitude")
-                    lon = row.get("longitude")
-                    if pd.notna(lat) and pd.notna(lon):
-                        if dl_columns == "Selected columns only" and 'show_cols' in dir():
-                            props = {c: (row[c].item() if hasattr(row[c], "item") else row[c]) for c in show_cols if c not in ("latitude", "longitude")}
-                        else:
-                            props = {c: (row[c].item() if hasattr(row[c], "item") else row[c]) for c in all_cols if c not in ("latitude", "longitude")}
-                        features.append({
-                            "type": "Feature",
-                            "geometry": {"type": "Point", "coordinates": [float(lon), float(lat)]},
-                            "properties": props,
-                        })
-                geojson = json.dumps({"type": "FeatureCollection", "features": features})
-                st.download_button(
-                    label=f"Download {len(features):,} features as GeoJSON",
-                    data=geojson,
-                    file_name=f"nst_{selected_hood.lower().replace(' ', '_')}.geojson",
-                    mime="application/geo+json",
-                )
-
-    # --------------------------------------------------------
-    #  STATE 2: MAP OVERVIEW (default — no hood selected)
-    # --------------------------------------------------------
-    else:
-        # Breadcrumb
+        # Prompt box
         st.markdown("""
-            <div class="breadcrumb">
-                <a href="?auth=1&page=home" target="_self">Home</a> &nbsp;/&nbsp; <strong>Map Explorer</strong>
+            <div class="map-sidebar-prompt">
+                <div class="map-sidebar-prompt-icon">
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#003071" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                        <circle cx="12" cy="10" r="3"></circle>
+                    </svg>
+                </div>
+                <div class="map-sidebar-prompt-text">Click on a Neighborhood<br>to view its data</div>
             </div>
         """, unsafe_allow_html=True)
 
-        # Layout: left sidebar (1) + map (2.5)
-        panel_col, map_col = st.columns([1, 2.5])
+        # Dropdown selector (navigates via st.query_params on selection)
+        neighborhoods = sorted(df_map["NEIGHBOR10"].dropna().unique().tolist())
+        selected_from_dropdown = st.selectbox("Or select a neighborhood", [""] + neighborhoods, key="map_hood_select", format_func=lambda x: "Choose a neighborhood..." if x == "" else x)
+        if selected_from_dropdown:
+            st.query_params["page"] = "neighborhood"
+            st.query_params["hood"] = selected_from_dropdown
+            st.rerun()
 
-        with panel_col:
-            st.markdown('<div class="map-page-header" style="font-size:1.6rem;">Map Explorer</div>', unsafe_allow_html=True)
-            st.markdown('<div class="map-page-subtitle" style="font-size:0.95rem;">Cleveland Neighborhood Data</div>', unsafe_allow_html=True)
+        st.markdown("---")
 
-            # Prompt box
-            st.markdown("""
-                <div class="map-sidebar-prompt">
-                    <div class="map-sidebar-prompt-icon">
-                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#003071" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
-                            <circle cx="12" cy="10" r="3"></circle>
-                        </svg>
-                    </div>
-                    <div class="map-sidebar-prompt-text">Click on a Neighborhood<br>to view its data</div>
-                </div>
-            """, unsafe_allow_html=True)
+        # Scrollable neighborhood list with property counts
+        st.markdown("**All Neighborhoods**")
+        hood_counts = df_map["NEIGHBOR10"].value_counts().sort_index()
+        hood_list_html = ""
+        for hood_name, count in hood_counts.items():
+            hood_list_html += f'<a href="?auth=1&page=neighborhood&hood={hood_name}" target="_self" class="hood-list-item">{hood_name}<span class="hood-list-item-count">{count}</span></a>'
+        st.markdown(f'<div style="max-height:400px;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px;">{hood_list_html}</div>', unsafe_allow_html=True)
 
-            # Dropdown selector (navigates via st.query_params on selection)
-            neighborhoods = sorted(df_map["neighborhood"].unique().tolist())
-            selected_from_dropdown = st.selectbox("Or select a neighborhood", [""] + neighborhoods, key="map_hood_select", format_func=lambda x: "Choose a neighborhood..." if x == "" else x)
-            if selected_from_dropdown:
-                st.query_params["page"] = "maps"
-                st.query_params["hood"] = selected_from_dropdown
-                st.rerun()
+    with map_col:
+        # Property counts per neighborhood for tooltips
+        hood_counts_map = df_map["NEIGHBOR10"].value_counts().to_dict()
+        hoods_with_data = set(df_map["NEIGHBOR10"].dropna().unique())
 
-            st.markdown("---")
+        # Color palette for neighborhoods with data
+        hood_colors = [
+            "#3498db", "#e74c3c", "#2ecc71", "#f39c12", "#9b59b6",
+            "#1abc9c", "#e67e22", "#2980b9", "#c0392b", "#27ae60",
+            "#d35400", "#8e44ad", "#16a085", "#f1c40f", "#2c3e50",
+            "#7f8c8d", "#e84393", "#00cec9", "#6c5ce7", "#fdcb6e",
+        ]
+        hood_color_map = {name: hood_colors[i % len(hood_colors)] for i, name in enumerate(sorted(hoods_with_data))}
 
-            # Scrollable neighborhood list with property counts
-            st.markdown("**All Neighborhoods**")
-            hood_counts = df_map["neighborhood"].value_counts().sort_index()
-            hood_list_html = ""
-            for hood_name, count in hood_counts.items():
-                hood_list_html += f'<a href="?auth=1&page=maps&hood={hood_name}" target="_self" class="hood-list-item">{hood_name}<span class="hood-list-item-count">{count}</span></a>'
-            st.markdown(f'<div style="max-height:400px;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px;">{hood_list_html}</div>', unsafe_allow_html=True)
+        # Build folium map centered on Cleveland
+        m = folium.Map(location=[41.4993, -81.6944], zoom_start=11, tiles="CartoDB positron")
 
-        with map_col:
-            # Aggregate stats per neighborhood for circle markers
-            hood_summary = df_map.groupby("neighborhood").agg(
-                lat=("latitude", "mean"),
-                lon=("longitude", "mean"),
-                count=("parcel_number", "count"),
-                avg_value=("property_value", "mean"),
-                vacancy_pct=("vacancy_status", lambda x: (x == "Vacant").mean() * 100),
-            ).reset_index()
+        # Draw all neighborhood polygons from shapefile
+        for _, row in gdf_hoods.iterrows():
+            hood_name = row["NEIGHBOR20"]
+            has_data = hood_name in hoods_with_data
+            count = hood_counts_map.get(hood_name, 0)
 
-            # Assign a unique color to each neighborhood
-            hood_colors = [
-                "#3498db", "#e74c3c", "#2ecc71", "#f39c12", "#9b59b6",
-                "#1abc9c", "#e67e22", "#2980b9", "#c0392b", "#27ae60",
-                "#d35400", "#8e44ad", "#16a085", "#f1c40f", "#2c3e50",
-                "#7f8c8d", "#e84393", "#00cec9", "#6c5ce7", "#fdcb6e",
-            ]
-            hood_color_map = {name: hood_colors[i % len(hood_colors)] for i, name in enumerate(sorted(df_map["neighborhood"].unique()))}
+            if has_data:
+                fill_color = hood_color_map.get(hood_name, "#003071")
+                fill_opacity = 0.45
+                border_color = "#003071"
+                border_weight = 2
+                tooltip_text = f"{hood_name} — {count:,} properties"
+            else:
+                fill_color = "#dddddd"
+                fill_opacity = 0.25
+                border_color = "#aaaaaa"
+                border_weight = 1
+                tooltip_text = hood_name
 
-            # Build folium map centered on Cleveland
-            m = folium.Map(location=[41.4993, -81.6944], zoom_start=12, tiles="CartoDB positron")
+            folium.GeoJson(
+                data=row.geometry.__geo_interface__,
+                style_function=lambda x, fc=fill_color, fo=fill_opacity, bc=border_color, bw=border_weight: {
+                    "fillColor": fc,
+                    "color": bc,
+                    "weight": bw,
+                    "fillOpacity": fo,
+                },
+                highlight_function=lambda x: {
+                    "weight": 3,
+                    "color": "#003071",
+                    "fillOpacity": 0.65,
+                },
+                tooltip=tooltip_text,
+                # Store just the name so click detection can match it
+                name=hood_name,
+            ).add_to(m)
 
-            for _, row in hood_summary.iterrows():
-                color = hood_color_map.get(row["neighborhood"], "#003071")
-                radius = max(15, min(35, row["count"] / 10))  # Scale circle size by property count
+        # Render map and capture click data
+        map_data = st_folium(m, width=None, height=650, use_container_width=True)
 
-                # Circle marker — tooltip MUST match neighborhood name exactly for click detection
-                folium.CircleMarker(
-                    location=[row["lat"], row["lon"]],
-                    radius=radius,
-                    tooltip=row["neighborhood"],
-                    color=color,
-                    weight=2,
-                    fill=True,
-                    fillColor=color,
-                    fillOpacity=0.5,
-                ).add_to(m)
+        # Navigate to neighborhood profile when a polygon is clicked
+        # Uses point-in-polygon on last_clicked since GeoJson tooltips aren't
+        # reliably returned by st_folium's last_object_clicked_tooltip.
+        if "last_map_click" not in st.session_state:
+            st.session_state["last_map_click"] = None
 
-                # Text label on top of circle
-                folium.Marker(
-                    location=[row["lat"], row["lon"]],
-                    icon=folium.DivIcon(
-                        html=f'<div style="font-size:11px;font-weight:bold;color:#333;text-align:center;white-space:nowrap;text-shadow:1px 1px 2px white,-1px -1px 2px white,1px -1px 2px white,-1px 1px 2px white;">{row["neighborhood"]}</div>',
-                        icon_size=(120, 20),
-                        icon_anchor=(60, 10),
-                    ),
-                ).add_to(m)
-
-            # Render map and capture click data
-            map_data = st_folium(m, width=None, height=650, use_container_width=True)
-
-            # Navigate to neighborhood profile when a circle is clicked
-            if map_data and map_data.get("last_object_clicked_tooltip"):
-                clicked_hood = map_data["last_object_clicked_tooltip"]
-                if clicked_hood in df_map["neighborhood"].unique():
-                    st.query_params["page"] = "maps"
-                    st.query_params["hood"] = clicked_hood
-                    st.rerun()
+        if map_data:
+            click = map_data.get("last_clicked")
+            if click and isinstance(click, dict):
+                lat = click.get("lat")
+                lng = click.get("lng")
+                if lat is not None and lng is not None:
+                    click_key = f"{lat:.6f},{lng:.6f}"
+                    if click_key != st.session_state.get("last_map_click"):
+                        st.session_state["last_map_click"] = click_key
+                        from shapely.geometry import Point
+                        pt = Point(lng, lat)
+                        match = gdf_hoods[gdf_hoods.geometry.contains(pt)]
+                        if not match.empty:
+                            clicked_hood = match.iloc[0]["NEIGHBOR20"]
+                            if clicked_hood in hoods_with_data:
+                                st.query_params.update({"auth": "1", "page": "neighborhood", "hood": clicked_hood})
+                                st.rerun()
 
     # -- Footer --
     st.markdown("---")
@@ -1738,6 +1810,419 @@ elif current_page == "property-search":
     """, unsafe_allow_html=True)
 
 
+elif current_page == "neighborhood":
+    # ========================================================
+    #  NEIGHBORHOOD PROFILE PAGE
+    #  URL: ?auth=1&page=neighborhood&hood=<name>
+    # ========================================================
+    import folium
+    from streamlit_folium import st_folium
+
+    selected_hood = query_params.get("hood", None)
+
+    @st.cache_data
+    def load_neighborhood_data():
+        return pd.read_csv("data/nstsample.csv", low_memory=False)
+
+    df_n = load_neighborhood_data()
+
+    st.markdown("""
+        <style>
+        .breadcrumb { font-size: 0.95rem; color: #666; margin-bottom: 1.5rem; }
+        .breadcrumb a { color: #003071; text-decoration: none; }
+        .breadcrumb a:hover { text-decoration: underline; }
+        .hood-profile-header { font-size: 2.4rem; font-weight: 700; color: #003071; margin-bottom: 0.2rem; }
+        .hood-profile-sub { font-size: 1rem; color: #666; margin-bottom: 1.5rem; }
+        .hood-stat-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .hood-stat-card {
+            background: #f8f9fc;
+            border-left: 4px solid #003071;
+            padding: 1rem 1.2rem;
+            border-radius: 4px;
+        }
+        .hood-stat-card-value { font-size: 1.6rem; font-weight: 700; color: #003071; }
+        .hood-stat-card-label { font-size: 0.85rem; color: #666; }
+        .hood-section-title {
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: #003071;
+            margin: 1.5rem 0 0.8rem 0;
+            padding-bottom: 0.4rem;
+            border-bottom: 2px solid #003071;
+        }
+        .hood-back-link {
+            display: inline-block;
+            color: #003071 !important;
+            text-decoration: none !important;
+            font-weight: 600;
+            font-size: 1rem;
+            margin-bottom: 1rem;
+        }
+        .hood-back-link:hover { color: #FFD700 !important; }
+        </style>
+    """, unsafe_allow_html=True)
+
+    if not selected_hood or selected_hood not in df_n["NEIGHBOR10"].unique():
+        st.warning("No neighborhood selected. Please choose one from the Map Explorer.")
+        st.markdown('<a href="?auth=1&page=maps" target="_self">← Back to Map Explorer</a>', unsafe_allow_html=True)
+    else:
+        hood_df = df_n[df_n["NEIGHBOR10"] == selected_hood].copy()
+
+        # Breadcrumb
+        st.markdown(f"""
+            <div class="breadcrumb">
+                <a href="?auth=1&page=home">Home</a> &rsaquo;
+                <a href="?auth=1&page=maps">Map Explorer</a> &rsaquo;
+                <strong>{selected_hood}</strong>
+            </div>
+        """, unsafe_allow_html=True)
+        st.markdown('<a href="?auth=1&page=maps" class="hood-back-link" target="_self">&larr; Back to Map</a>', unsafe_allow_html=True)
+
+        # Header
+        wards_in_hood = sorted(hood_df["ward2025"].dropna().unique().astype(int).tolist())
+        zips_in_hood = sorted(hood_df["zip"].dropna().astype(str).str.split(".").str[0].unique().tolist())
+        st.markdown(f'<div class="hood-profile-header">{selected_hood}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="hood-profile-sub">Ward{"s" if len(wards_in_hood) > 1 else ""} {", ".join(str(w) for w in wards_in_hood)} &nbsp;|&nbsp; ZIP{"s" if len(zips_in_hood) > 1 else ""} {", ".join(str(z) for z in zips_in_hood)}</div>', unsafe_allow_html=True)
+
+        # Key metrics
+        n_total = len(hood_df)
+        def _safe_int(val, default=0):
+            import math
+            try:
+                return default if (val is None or (isinstance(val, float) and math.isnan(val))) else int(val)
+            except (TypeError, ValueError):
+                return default
+
+        n_avg_val = _safe_int(pd.to_numeric(hood_df["TAX_MARKET_TOTAL"], errors="coerce").mean()) if n_total > 0 else 0
+        n_median_val = _safe_int(pd.to_numeric(hood_df["TAX_MARKET_TOTAL"], errors="coerce").median()) if n_total > 0 else 0
+        n_vacancy = round((hood_df["combovac"] == 1).sum() / n_total * 100, 1) if n_total > 0 else 0
+        n_violations = int((hood_df["violation"] == 1).sum()) if n_total > 0 else 0
+        n_foreclosure = int((hood_df["FORECLOSURE_FLAG"] == 1).sum()) if n_total > 0 else 0
+        n_tax_del = int((pd.to_numeric(hood_df["NET_TAX_DELQ_DUE"], errors="coerce") > 0).sum()) if n_total > 0 else 0
+        n_avg_assessment = _safe_int(pd.to_numeric(hood_df["assessment"], errors="coerce").mean()) if n_total > 0 else 0
+        n_land_bank = int((hood_df["vl"] == 1).sum()) if n_total > 0 else 0
+
+        st.markdown(f"""
+            <div class="hood-stat-grid">
+                <div class="hood-stat-card">
+                    <div class="hood-stat-card-value">{n_total:,}</div>
+                    <div class="hood-stat-card-label">Total Properties</div>
+                </div>
+                <div class="hood-stat-card">
+                    <div class="hood-stat-card-value">${n_avg_val:,}</div>
+                    <div class="hood-stat-card-label">Avg Market Value</div>
+                </div>
+                <div class="hood-stat-card">
+                    <div class="hood-stat-card-value">${n_median_val:,}</div>
+                    <div class="hood-stat-card-label">Median Market Value</div>
+                </div>
+                <div class="hood-stat-card">
+                    <div class="hood-stat-card-value">{n_vacancy}%</div>
+                    <div class="hood-stat-card-label">Vacancy Rate</div>
+                </div>
+                <div class="hood-stat-card">
+                    <div class="hood-stat-card-value">{n_violations:,}</div>
+                    <div class="hood-stat-card-label">Properties w/ Violations</div>
+                </div>
+                <div class="hood-stat-card">
+                    <div class="hood-stat-card-value">{n_foreclosure:,}</div>
+                    <div class="hood-stat-card-label">In Foreclosure</div>
+                </div>
+                <div class="hood-stat-card">
+                    <div class="hood-stat-card-value">{n_tax_del:,}</div>
+                    <div class="hood-stat-card-label">Tax Delinquent</div>
+                </div>
+                <div class="hood-stat-card">
+                    <div class="hood-stat-card-value">${n_avg_assessment:,}</div>
+                    <div class="hood-stat-card-label">Avg Assessment</div>
+                </div>
+                <div class="hood-stat-card">
+                    <div class="hood-stat-card-value">{n_land_bank:,}</div>
+                    <div class="hood-stat-card-label">Land Bank Properties</div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+
+        # Tabs
+        tab_overview, tab_map, tab_data, tab_download = st.tabs(["Overview", "Map", "Property Data", "Download"])
+
+        with tab_overview:
+            st.markdown('<div class="hood-section-title">Property Breakdown</div>', unsafe_allow_html=True)
+            ov1, ov2 = st.columns(2)
+            with ov1:
+                st.bar_chart(hood_df["CLASSIFICATION_DESCR"].value_counts(), color="#003071")
+                st.caption("Properties by Classification")
+            with ov2:
+                st.bar_chart(hood_df["condition"].dropna().value_counts(), color="#003071")
+                st.caption("Properties by Condition")
+
+            st.markdown('<div class="hood-section-title">Property Status</div>', unsafe_allow_html=True)
+            ov3, ov4 = st.columns(2)
+            with ov3:
+                vac_counts = hood_df["combovac"].map({1: "Vacant", 0: "Occupied"}).value_counts()
+                st.bar_chart(vac_counts, color="#003071")
+                st.caption("Vacancy Status")
+            with ov4:
+                delq = pd.to_numeric(hood_df["NET_TAX_DELQ_DUE"], errors="coerce")
+                delq_counts = pd.Series({"Delinquent": int((delq > 0).sum()), "Current": int((delq <= 0).sum())})
+                st.bar_chart(delq_counts, color="#003071")
+                st.caption("Tax Delinquency")
+
+            st.markdown('<div class="hood-section-title">Violations & Foreclosure</div>', unsafe_allow_html=True)
+            ov5, ov6 = st.columns(2)
+            with ov5:
+                violation_summary = pd.DataFrame({
+                    "Status": ["With Violations", "No Violations"],
+                    "Properties": [int((hood_df["violation"] == 1).sum()), int((hood_df["violation"] != 1).sum())],
+                })
+                st.dataframe(violation_summary, use_container_width=True, hide_index=True)
+            with ov6:
+                fc_counts = hood_df["FORECLOSURE_FLAG"].map({1: "In Foreclosure", 0: "Not in Foreclosure"}).value_counts()
+                st.bar_chart(fc_counts, color="#003071")
+                st.caption("Foreclosure Status")
+
+            st.markdown('<div class="hood-section-title">Value Statistics</div>', unsafe_allow_html=True)
+            val_cols = [c for c in ["TAX_MARKET_TOTAL", "assessment", "lsaleamt", "NET_TAX_DELQ_DUE"] if c in hood_df.columns]
+            st.dataframe(
+                hood_df[val_cols].apply(pd.to_numeric, errors="coerce").describe().round(0),
+                use_container_width=True,
+            )
+
+        with tab_map:
+            hood_map_data = hood_df[["LATITUDE", "LONGITUDE"]].apply(pd.to_numeric, errors="coerce").dropna()
+            if len(hood_map_data) > 0:
+                center_lat = hood_map_data["LATITUDE"].mean()
+                center_lon = hood_map_data["LONGITUDE"].mean()
+                m = folium.Map(location=[center_lat, center_lon], zoom_start=14, tiles="CartoDB positron")
+                for _, prop in hood_df.iterrows():
+                    lat = pd.to_numeric(prop["LATITUDE"], errors="coerce")
+                    lon = pd.to_numeric(prop["LONGITUDE"], errors="coerce")
+                    if pd.notna(lat) and pd.notna(lon):
+                        addr = f"{prop.get('number', '')} {prop.get('street', '')}".strip()
+                        val = prop.get("TAX_MARKET_TOTAL", "N/A")
+                        try:
+                            val_str = f"${int(float(val)):,}"
+                        except (ValueError, TypeError):
+                            val_str = "N/A"
+                        folium.CircleMarker(
+                            location=[lat, lon],
+                            radius=5,
+                            color="#003071",
+                            fill=True,
+                            fillColor="#FFD700",
+                            fillOpacity=0.7,
+                            tooltip=addr,
+                            popup=folium.Popup(
+                                f"<b>{addr}</b><br>"
+                                f"Class: {prop.get('CLASSIFICATION_DESCR', 'N/A')}<br>"
+                                f"Market Value: {val_str}<br>"
+                                f"Condition: {prop.get('condition', 'N/A')}<br>"
+                                f"Vacant: {'Yes' if prop.get('combovac') == 1 else 'No'}",
+                                max_width=220,
+                            ),
+                        ).add_to(m)
+                st_folium(m, width=None, height=500, use_container_width=True)
+            else:
+                st.info("No geocoded properties available for this neighborhood.")
+
+        with tab_data:
+            st.markdown(f"**{n_total:,} properties in {selected_hood}**")
+            all_cols = hood_df.columns.tolist()
+            default_cols = ["PARCEL", "number", "street", "CLASSIFICATION_DESCR", "TAX_MARKET_TOTAL", "condition", "combovac", "FORECLOSURE_FLAG"]
+            show_cols = st.multiselect("Columns to display", all_cols, default=[c for c in default_cols if c in all_cols], key="hood_cols")
+            if not show_cols:
+                show_cols = default_cols
+            st.dataframe(hood_df[show_cols].reset_index(drop=True), use_container_width=True, hide_index=True, height=500)
+
+        with tab_download:
+            st.markdown(f"Export all **{n_total:,} properties** in {selected_hood}.")
+            dl_col1, dl_col2 = st.columns(2)
+            with dl_col1:
+                dl_format = st.radio("Format", ["CSV", "GeoJSON"], key="hood_dl_fmt")
+            with dl_col2:
+                dl_columns = st.radio("Columns", ["All columns", "Selected columns only"], key="hood_dl_cols")
+
+            export_hood_df = hood_df[show_cols] if dl_columns == "Selected columns only" and 'show_cols' in dir() else hood_df
+
+            if dl_format == "CSV":
+                st.download_button(
+                    label=f"Download {n_total:,} properties as CSV",
+                    data=export_hood_df.to_csv(index=False),
+                    file_name=f"nst_{selected_hood.lower().replace(' ', '_')}.csv",
+                    mime="text/csv",
+                )
+            else:
+                features = []
+                export_all_cols = hood_df.columns.tolist()
+                for _, row in hood_df.iterrows():
+                    lat = pd.to_numeric(row.get("LATITUDE"), errors="coerce")
+                    lon = pd.to_numeric(row.get("LONGITUDE"), errors="coerce")
+                    if pd.notna(lat) and pd.notna(lon):
+                        cols_to_use = show_cols if dl_columns == "Selected columns only" and 'show_cols' in dir() else export_all_cols
+                        props = {c: (row[c].item() if hasattr(row[c], "item") else row[c]) for c in cols_to_use if c not in ("LATITUDE", "LONGITUDE")}
+                        features.append({"type": "Feature", "geometry": {"type": "Point", "coordinates": [float(lon), float(lat)]}, "properties": props})
+                st.download_button(
+                    label=f"Download {len(features):,} features as GeoJSON",
+                    data=json.dumps({"type": "FeatureCollection", "features": features}),
+                    file_name=f"nst_{selected_hood.lower().replace(' ', '_')}.geojson",
+                    mime="application/geo+json",
+                )
+
+    st.markdown("---")
+    st.markdown("""
+        <div style="text-align: center; color: #666; padding: 2rem 0;">
+            <p>Powered by CWRU Poverty Center | Last Updated: March 2026</p>
+        </div>
+    """, unsafe_allow_html=True)
+
+
+elif current_page == "contact":
+    # ========================================================
+    #  CONTACT / TALK WITH US PAGE
+    # ========================================================
+
+    st.markdown("""
+        <style>
+        .breadcrumb { font-size: 0.95rem; color: #666; margin-bottom: 1.5rem; }
+        .breadcrumb a { color: #003071; text-decoration: none; }
+        .breadcrumb a:hover { text-decoration: underline; }
+        .page-header { font-size: 2.5rem; font-weight: 700; color: #003071; margin-bottom: 0.3rem; }
+        .page-subtitle { font-size: 1.1rem; color: #666; margin-bottom: 2rem; }
+        .contact-card {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+        }
+        .contact-card-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #003071;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-bottom: 2px solid #FFD700;
+            padding-bottom: 0.5rem;
+            margin-bottom: 1.2rem;
+        }
+        .contact-org {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #003071;
+            margin-bottom: 0.2rem;
+        }
+        .contact-school {
+            font-size: 0.9rem;
+            color: #444;
+            font-style: italic;
+            margin-bottom: 0.15rem;
+        }
+        .contact-univ {
+            font-size: 0.9rem;
+            color: #444;
+            margin-bottom: 0.15rem;
+        }
+        .contact-addr {
+            font-size: 0.9rem;
+            color: #555;
+            line-height: 1.6;
+            margin-bottom: 0.8rem;
+        }
+        .contact-detail {
+            font-size: 0.9rem;
+            color: #555;
+            margin-bottom: 0.2rem;
+        }
+        .contact-detail a { color: #003071; text-decoration: none; }
+        .contact-detail a:hover { text-decoration: underline; }
+        .contact-link-btn {
+            display: inline-block;
+            margin-top: 1rem;
+            padding: 0.6rem 1.4rem;
+            background: #003071;
+            color: white !important;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            text-decoration: none;
+            letter-spacing: 0.5px;
+        }
+        .contact-link-btn:hover { background: #00245a; text-decoration: none !important; }
+        .contact-link-btn.gold { background: #FFD700; color: #003071 !important; }
+        .contact-link-btn.gold:hover { background: #e6c200; }
+        </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown("""
+        <div class="breadcrumb"><a href="?auth=1&page=home">Home</a> &rsaquo; Talk With Us</div>
+        <div class="page-header">Talk With Us</div>
+        <div class="page-subtitle">Reach out to the Center on Poverty &amp; Community Development at Case Western Reserve University.</div>
+    """, unsafe_allow_html=True)
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("""
+            <div class="contact-card">
+                <div class="contact-card-title">Mailing Address</div>
+                <div class="contact-org">Center on Poverty &amp; Community Development</div>
+                <div class="contact-school">Jack, Joseph and Morton Mandel School of Applied Social Sciences</div>
+                <div class="contact-univ">Case Western Reserve University</div>
+                <div class="contact-addr">
+                    10900 Euclid Avenue<br>
+                    Cleveland, Ohio 44106-7167
+                </div>
+                <div class="contact-detail">Tel: <a href="tel:2163686946">216.368.6946</a></div>
+                <div class="contact-detail">Fax: 216.368.8592</div>
+            </div>
+        """, unsafe_allow_html=True)
+
+    with col2:
+        st.markdown("""
+            <div class="contact-card">
+                <div class="contact-card-title">Location &amp; Visitor Address</div>
+                <div class="contact-org">Center on Poverty &amp; Community Development</div>
+                <div class="contact-school">Jack, Joseph and Morton Mandel Community Studies Center</div>
+                <div class="contact-univ">Case Western Reserve University</div>
+                <div class="contact-addr">
+                    11402 Bellflower Road<br>
+                    Cleveland, Ohio 44106-7167
+                </div>
+                <div class="contact-detail">Tel: <a href="tel:2163686946">216.368.6946</a></div>
+                <div class="contact-detail">Fax: 216.368.8592</div>
+                <div class="contact-detail">Email: <a href="mailto:povcenter@case.edu">povcenter@case.edu</a></div>
+            </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("""
+        <div class="contact-card" style="text-align:center; padding: 2rem;">
+            <div class="contact-card-title" style="text-align:center; border-bottom:none; margin-bottom:0.8rem;">Get in Touch</div>
+            <p style="color:#555; font-size:0.95rem; margin-bottom:1.5rem;">
+                Visit the Poverty Center's website to learn more about our research and team,
+                or go directly to our faculty and staff directory to reach a specific person.
+            </p>
+            <a href="https://case.edu/socialwork/povertycenter/" target="_blank" class="contact-link-btn" style="margin-right:1rem;">
+                Poverty Center Website
+            </a>
+            <a href="https://case.edu/socialwork/povertycenter/about/faculty-staff" target="_blank" class="contact-link-btn gold">
+                Faculty &amp; Staff Directory
+            </a>
+        </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("---")
+    st.markdown("""
+        <div style="text-align: center; color: #666; padding: 2rem 0;">
+            <p>Powered by CWRU Poverty Center | Last Updated: March 2026</p>
+        </div>
+    """, unsafe_allow_html=True)
+
+
 else:
     # ========================================================
     #  HOME PAGE — Landing page with hero, cards, partners
@@ -1753,7 +2238,7 @@ else:
                 <div class="hero-buttons">
                     <a href="?auth=1&page=datasets" target="_self" class="hero-button">Find Data</a>
                     <a href="#" class="hero-button">Popular Projects</a>
-                    <a href="#" class="hero-button">Learn More</a>
+                    <a href="https://case.edu/socialwork/povertycenter/about" target="_blank" class="hero-button">Learn More</a>
                 </div>
             </div>
         </div>
@@ -1802,39 +2287,29 @@ else:
 
     st.markdown("---")
 
-    # Partners section — replace placeholders with real logos
-    st.markdown("""
+    # Partners section
+    st.markdown(f"""
         <div class="partners-section-title">OUR DATA PARTNERS</div>
-        <div class="partners-grid">
+        <div class="partners-grid" style="grid-template-columns: repeat(4, 1fr);">
             <div class="partner-logo">
-                <p style="color: #999; font-size: 0.9rem;">Partner 1</p>
+                <a href="https://clevelandohio.gov" target="_blank" rel="noopener">
+                    <img src="data:image/svg+xml;base64,{partner_cleveland_base64}" alt="City of Cleveland" style="max-height:70px;">
+                </a>
             </div>
             <div class="partner-logo">
-                <p style="color: #999; font-size: 0.9rem;">Partner 2</p>
+                <a href="https://www.cuyahogacounty.gov/fiscal-officer" target="_blank" rel="noopener">
+                    <img src="data:image/svg+xml;base64,{partner_cuyahoga_base64}" alt="Cuyahoga County" style="max-height:70px;">
+                </a>
             </div>
             <div class="partner-logo">
-                <p style="color: #999; font-size: 0.9rem;">Partner 3</p>
+                <a href="https://cuyahogalandbank.org" target="_blank" rel="noopener">
+                    <img src="data:image/svg+xml;base64,{partner_cclrc_base64}" alt="Cuyahoga Land Bank" style="max-height:70px;">
+                </a>
             </div>
             <div class="partner-logo">
-                <p style="color: #999; font-size: 0.9rem;">Partner 4</p>
-            </div>
-            <div class="partner-logo">
-                <p style="color: #999; font-size: 0.9rem;">Partner 5</p>
-            </div>
-            <div class="partner-logo">
-                <p style="color: #999; font-size: 0.9rem;">Partner 6</p>
-            </div>
-            <div class="partner-logo">
-                <p style="color: #999; font-size: 0.9rem;">Partner 7</p>
-            </div>
-            <div class="partner-logo">
-                <p style="color: #999; font-size: 0.9rem;">Partner 8</p>
-            </div>
-            <div class="partner-logo">
-                <p style="color: #999; font-size: 0.9rem;">Partner 9</p>
-            </div>
-            <div class="partner-logo">
-                <p style="color: #999; font-size: 0.9rem;">Partner 10</p>
+                <a href="https://www.census.gov" target="_blank" rel="noopener">
+                    <img src="data:image/svg+xml;base64,{partner_census_base64}" alt="U.S. Census Bureau" style="max-height:70px;">
+                </a>
             </div>
         </div>
     """, unsafe_allow_html=True)
@@ -1843,7 +2318,7 @@ else:
     st.markdown("""
         <div class="contribute-section">
             <div class="contribute-title">Want to share data through your organization?</div>
-            <a href="#" class="contribute-button">TALK WITH US</a>
+            <a href="?auth=1&page=contact" target="_self" class="contribute-button">TALK WITH US</a>
         </div>
     """, unsafe_allow_html=True)
 
@@ -1854,3 +2329,5 @@ else:
             <p>Powered by CWRU Poverty Center | Last Updated: January 2026</p>
         </div>
     """, unsafe_allow_html=True)
+
+

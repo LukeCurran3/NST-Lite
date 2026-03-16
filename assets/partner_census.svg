@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="220" height="80" viewBox="0 0 220 80">
+  <rect width="220" height="80" fill="white"/>
+  <text x="110" y="26" text-anchor="middle" fill="#003071" font-family="Arial,Helvetica,sans-serif" font-size="10" font-weight="700" letter-spacing="2.5">U.S. CENSUS BUREAU</text>
+  <line x1="20" y1="34" x2="200" y2="34" stroke="#003071" stroke-width="1.5"/>
+  <text x="110" y="52" text-anchor="middle" fill="#555" font-family="Arial,Helvetica,sans-serif" font-size="9" letter-spacing="1">DEPARTMENT OF COMMERCE</text>
+  <text x="110" y="67" text-anchor="middle" fill="#888" font-family="Arial,Helvetica,sans-serif" font-size="9">census.gov</text>
+</svg>
