@@ -3,3 +3,7 @@ venv/
 __pycache__/
 *.pyc
 .env
+
+# Large data files — do not commit
+data/*.csv
+data/*.sas7bdat

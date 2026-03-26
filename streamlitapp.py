@@ -541,7 +541,7 @@ if current_page == "datasets":
 
     @st.cache_data
     def load_data():
-        return pd.read_csv("data/nstsample.csv", low_memory=False)
+        return pd.read_csv("data/50ksamplereal.csv", low_memory=False)
 
     df = load_data()
 
@@ -1260,13 +1260,13 @@ elif current_page == "maps":
 
     # -- Load data --
     @st.cache_data
-    def load_map_data():
-        return pd.read_csv("data/nstsample.csv", low_memory=False)
-
-    @st.cache_data
     def load_neighborhoods():
         gdf = gpd.read_file("data/cuy_nei20_NAD83.shp")
         return gdf.to_crs(epsg=4326)
+
+    @st.cache_data
+    def load_map_data():
+        return pd.read_csv("data/50ksamplereal.csv", low_memory=False)
 
     df_map = load_map_data()
     gdf_hoods = load_neighborhoods()
@@ -1527,10 +1527,9 @@ elif current_page == "property-search":
     #  Shows a detailed profile card with all property attributes.
     # ========================================================
 
-    # -- Load data --
     @st.cache_data
     def load_property_data():
-        return pd.read_csv("data/nst_sample_data.csv")
+        return pd.read_csv("data/50ksamplereal.csv", low_memory=False)
 
     df_ps = load_property_data()
 
@@ -1821,7 +1820,7 @@ elif current_page == "neighborhood":
 
     @st.cache_data
     def load_neighborhood_data():
-        return pd.read_csv("data/nstsample.csv", low_memory=False)
+        return pd.read_csv("data/50ksamplereal.csv", low_memory=False)
 
     df_n = load_neighborhood_data()
 
