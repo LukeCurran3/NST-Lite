@@ -485,6 +485,10 @@ st.markdown(f"""
                             <div class="dropdown-item-title">Interactive Maps</div>
                             <div class="dropdown-item-description">Visualize Cleveland data on interactive maps</div>
                         </a>
+                        <a href="?auth=1&page=property-search" target="_self" class="dropdown-item">
+                            <div class="dropdown-item-title">Property Search</div>
+                            <div class="dropdown-item-description">Look up detailed information for a specific address or parcel</div>
+                        </a>
                     </div>
                 </li>
                 <li class="navbar-item">
@@ -630,13 +634,15 @@ if current_page == "datasets":
         prop_types = ["All"] + sorted(df["CLASSIFICATION_DESCR"].dropna().astype(str).replace("nan","").pipe(lambda s: s[s != ""]).unique().tolist())
         f_prop_type = st.selectbox("Property Type", prop_types, key="f_ptype")
     with sf3:
-        yr_min_data = int(df["yrbuilt"].dropna().min())
-        yr_max_data = int(df["yrbuilt"].dropna().max())
+        yr_valid = df["yrbuilt"].dropna()
+        yr_valid = yr_valid[(yr_valid > 0) & (yr_valid < 9999)]
+        yr_min_data = int(yr_valid.min())
+        yr_max_data = int(yr_valid.max())
         f_year_range = st.slider("Year Built", yr_min_data, yr_max_data, (yr_min_data, yr_max_data), key="f_yr")
 
     sf4, sf5 = st.columns(2)
     with sf4:
-        val_max_data = int(df["TAX_MARKET_TOTAL"].dropna().max())
+        val_max_data = 5_000_000
         f_value_range = st.slider("Property Value ($)", 0, val_max_data, (0, val_max_data), step=5000, format="$%d", key="f_val")
     with sf5:
         conditions = ["All"] + sorted(df["condition"].dropna().astype(str).replace("nan","").pipe(lambda s: s[s != ""]).unique().tolist())
@@ -685,13 +691,11 @@ if current_page == "datasets":
             with vt2: f_payment_plan = st.checkbox("On payment plan", key="adv_pp")
             with vt3: f_cert_pend = st.checkbox("Tax cert. pending", key="adv_cp")
             with vt4: f_cert_sold = st.checkbox("Tax cert. sold", key="adv_cs")
-            vt5, vt6 = st.columns(2)
+            vt5, _ = st.columns(2)
             with vt5:
                 tax_abate_vals = ["All"] + sorted(df["taxabate"].dropna().astype(str).replace("nan","").pipe(lambda s: s[s != ""]).unique().tolist())
                 f_taxabate = st.selectbox("Tax Abatement Code", tax_abate_vals, key="adv_aba")
-            with vt6:
-                bor_vals = ["All"] + sorted(df["BOR_STATUS"].dropna().astype(str).replace("nan","").pipe(lambda s: s[s != ""]).unique().tolist())
-                f_bor = st.selectbox("BOR Status", bor_vals, key="adv_bor")
+            f_bor = "All"  # BOR_STATUS is fully null in current dataset
 
         with st.expander("Violations (CLE Only)"):
             vc1, vc2, vc3, vc4 = st.columns(4)
@@ -707,21 +711,11 @@ if current_page == "datasets":
                 vtask_vals = ["All"] + sorted(df["violation_task_status"].dropna().astype(str).replace("nan","").pipe(lambda s: s[s != ""]).unique().tolist())
                 f_vtask = st.selectbox("Violation Task Status", vtask_vals, key="adv_vtask")
 
-        with st.expander("Evictions (CLE Only)"):
-            ev1, ev2 = st.columns(2)
-            with ev1:
-                evs_vals = ["All"] + sorted(df["evict_case_status"].dropna().astype(str).replace("nan","").pipe(lambda s: s[s != ""]).unique().tolist())
-                f_evict_status = st.selectbox("Eviction Status", evs_vals, key="adv_evs")
-            with ev2:
-                evd_vals = ["All"] + sorted(df["evict_disp_status"].dropna().astype(str).replace("nan","").pipe(lambda s: s[s != ""]).unique().tolist())
-                f_evict_disp = st.selectbox("Eviction Disposition", evd_vals, key="adv_evd")
-            ev3, ev4 = st.columns(2)
-            with ev3:
-                evyr_vals = sorted(df["evict_yr"].dropna().astype(str).replace("nan","").pipe(lambda s: s[s != ""]).unique().tolist(), reverse=True)
-                evyr_opts = ["All"] + evyr_vals
-                f_evict_yr = st.selectbox("Eviction Year", evyr_opts, key="adv_evy")
-            with ev4:
-                f_evict_multi = st.checkbox("Multi-case evictions only", key="adv_evm")
+        # Eviction columns are fully null in current dataset — filters omitted
+        f_evict_status = "All"
+        f_evict_disp = "All"
+        f_evict_yr = "All"
+        f_evict_multi = False
 
         with st.expander("Lead Safe Certifications"):
             ls1, ls2 = st.columns(2)
@@ -816,10 +810,13 @@ if current_page == "datasets":
         filtered_df = filtered_df[filtered_df["CLASSIFICATION_DESCR"].astype(str) == f_prop_type]
     if f_condition != "All":
         filtered_df = filtered_df[filtered_df["condition"].astype(str) == f_condition]
-    filtered_df = filtered_df[
-        (filtered_df["yrbuilt"].fillna(0) >= f_year_range[0]) &
-        (filtered_df["yrbuilt"].fillna(9999) <= f_year_range[1])
-    ]
+    if f_year_range != (yr_min_data, yr_max_data):
+        filtered_df = filtered_df[
+            (filtered_df["yrbuilt"] >= f_year_range[0]) &
+            (filtered_df["yrbuilt"] <= f_year_range[1]) &
+            (filtered_df["yrbuilt"] > 0) &
+            (filtered_df["yrbuilt"] < 9999)
+        ]
     filtered_df = filtered_df[
         (filtered_df["TAX_MARKET_TOTAL"].fillna(0) >= f_value_range[0]) &
         (filtered_df["TAX_MARKET_TOTAL"].fillna(0) <= f_value_range[1])
@@ -871,7 +868,7 @@ if current_page == "datasets":
     if f_active_condemn:
         filtered_df = filtered_df[filtered_df["active_condemn"].fillna(0) == 1]
     if f_bh_lead:
-        filtered_df = filtered_df[filtered_df["cod_current_bh_lead_violations"].fillna("").astype(str).str.strip().replace("nan","") != ""]
+        filtered_df = filtered_df[filtered_df["cod_current_bh_lead_violations"].fillna("").astype(str).str.strip() == "Yes"]
     if f_cdc_comp:
         filtered_df = filtered_df[filtered_df["cdc_comp"].fillna(0) == 1]
     if f_council_comp:
@@ -1015,7 +1012,7 @@ if current_page == "datasets":
             from streamlit_folium import st_folium
             import geopandas as gpd
 
-            _map_cols = ["LATITUDE", "LONGITUDE", "NEIGHBOR10", "number", "street", "TAX_MARKET_TOTAL", "combovac"]
+            _map_cols = ["LATITUDE", "LONGITUDE", "NEIGHBOR10", "address", "TAX_MARKET_TOTAL", "combovac"]
             map_df = filtered_df[[c for c in _map_cols if c in filtered_df.columns]].copy()
             map_df = map_df.dropna(subset=["LATITUDE", "LONGITUDE"])
 
@@ -1052,9 +1049,7 @@ if current_page == "datasets":
                 for _, row in map_df.iterrows():
                     is_vacant = int(row.get("combovac", 0) or 0) == 1
                     color = "#e03127" if is_vacant else "#003071"
-                    num = str(row.get("number", "")).strip()
-                    street = str(row.get("street", "")).strip()
-                    address = f"{num} {street}".strip() or "Unknown Address"
+                    address = str(row.get("address", "")).strip() or "Unknown Address"
                     val = row.get("TAX_MARKET_TOTAL")
                     val_str = f"${int(val):,}" if pd.notna(val) and val > 0 else "N/A"
                     vacant_label = '<span style="color:#e03127">&#9888; Vacant</span>' if is_vacant else "Occupied"
@@ -1533,6 +1528,24 @@ elif current_page == "property-search":
 
     df_ps = load_property_data()
 
+    def fmt(val, prefix="", suffix="", fmt_int=False, na="N/A"):
+        """Safely format a value for display."""
+        if pd.isna(val) or val == "" or val is None:
+            return na
+        if fmt_int:
+            try:
+                return f"{prefix}{int(val):,}{suffix}"
+            except (ValueError, TypeError):
+                return na
+        return f"{prefix}{val}{suffix}"
+
+    def detail_cell(label, value):
+        return f"""
+            <div class="property-detail">
+                <div class="property-detail-label">{label}</div>
+                <div class="property-detail-value">{value}</div>
+            </div>"""
+
     # -- Page CSS --
     st.markdown("""
         <style>
@@ -1549,7 +1562,7 @@ elif current_page == "property-search":
             margin-bottom: 1rem;
         }
         .property-card-header {
-            font-size: 1.5rem;
+            font-size: 1.8rem;
             font-weight: 700;
             color: #003071;
             margin-bottom: 0.3rem;
@@ -1573,9 +1586,11 @@ elif current_page == "property-search":
             font-size: 0.8rem;
             color: #666;
             margin-bottom: 0.2rem;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
         }
         .property-detail-value {
-            font-size: 1.1rem;
+            font-size: 1.05rem;
             font-weight: 600;
             color: #003071;
         }
@@ -1587,217 +1602,172 @@ elif current_page == "property-search":
             padding-bottom: 0.4rem;
             border-bottom: 2px solid #003071;
         }
+        .flag-yes { color: #c0392b; font-weight: 600; }
+        .flag-no  { color: #27ae60; font-weight: 600; }
         </style>
     """, unsafe_allow_html=True)
 
     # -- Breadcrumb + header --
-    st.markdown('<div class="breadcrumb"><a href="?auth=1&page=home" target="_self">Home</a> &nbsp;/&nbsp; <strong>Property Search</strong></div>', unsafe_allow_html=True)
+    st.markdown('<div class="breadcrumb"><a href="?auth=1&page=home" target="_self">Home</a> &nbsp;/&nbsp; <a href="?auth=1&page=datasets" target="_self">Data</a> &nbsp;/&nbsp; <strong>Property Search</strong></div>', unsafe_allow_html=True)
     st.markdown("""
         <div class="page-header">Property Search</div>
-        <div class="page-subtitle">Look up detailed information for a specific property.</div>
+        <div class="page-subtitle">Look up detailed information for a specific address, parcel ID, or owner name.</div>
     """, unsafe_allow_html=True)
 
     # -- Search input --
     ps_query = st.text_input(
-        "Search by address or parcel number",
-        placeholder="e.g. 1725 Pearl Rd or 754-24-125",
+        "Search by address, parcel ID, or owner name",
+        placeholder="e.g. 1234 W 25th St  |  123-45-678  |  SMITH JOHN",
         key="ps_search",
     )
 
     if ps_query:
-        # Search against combined "house_number street_name" and parcel_number
-        full_address = df_ps["house_number"].astype(str) + " " + df_ps["street_name"].fillna("")
+        q = ps_query.strip()
         mask = (
-            full_address.str.contains(ps_query, case=False, na=False)
-            | df_ps["parcel_number"].str.contains(ps_query, case=False, na=False)
+            df_ps["address"].fillna("").str.contains(q, case=False, regex=False)
+            | df_ps["PARCEL"].fillna("").astype(str).str.contains(q, case=False, regex=False)
+            | df_ps["PRIMARY_OWNER_NAME"].fillna("").str.contains(q, case=False, regex=False)
         )
         results = df_ps[mask]
 
         if len(results) == 0:
-            st.warning("No properties found. Try a different search term.")
-        elif len(results) > 1 and len(results) <= 20:
-            st.markdown(f"**{len(results)} properties found.** Select one:")
-            options = [f"{int(r['house_number'])} {r['street_name']} ({r['parcel_number']})" for _, r in results.iterrows()]
-            selected_option = st.selectbox("Select a property", options, label_visibility="collapsed")
-            selected_idx = options.index(selected_option)
-            prop = results.iloc[selected_idx]
+            st.warning("No properties found. Try a different address, parcel ID, or owner name.")
         elif len(results) > 20:
-            st.warning(f"{len(results)} results found. Please be more specific.")
-            prop = None
+            st.warning(f"{len(results):,} results found — please be more specific.")
         else:
-            prop = results.iloc[0]
-
-        # -- Property profile card --
-        if len(results) >= 1 and len(results) <= 20:
-            if len(results) == 1:
+            if len(results) > 1:
+                st.markdown(f"**{len(results)} properties found.** Select one:")
+                options = [f"{r['address']}  ({r['PARCEL']})" for _, r in results.iterrows()]
+                selected_option = st.selectbox("Select a property", options, label_visibility="collapsed")
+                prop = results.iloc[options.index(selected_option)]
+            else:
                 prop = results.iloc[0]
 
-            # Address header
+            # ---- Address header card ----
+            ward_val = fmt(prop.get("ward2025"), fmt_int=True)
+            zip_val  = fmt(prop.get("zip"), fmt_int=True)
             st.markdown(f"""
                 <div class="property-card">
-                    <div class="property-card-header">{int(prop['house_number'])} {prop['street_name']}</div>
-                    <div class="property-card-parcel">Parcel: {prop['parcel_number']} &nbsp;|&nbsp; {prop['neighborhood']} &nbsp;|&nbsp; Ward {int(prop['ward'])} &nbsp;|&nbsp; ZIP {int(prop['zip_code'])}</div>
+                    <div class="property-card-header">{prop['address']}</div>
+                    <div class="property-card-parcel">
+                        Parcel: <strong>{prop['PARCEL']}</strong>
+                        &nbsp;|&nbsp; {fmt(prop.get('NEIGHBOR10'))}
+                        &nbsp;|&nbsp; Ward {ward_val}
+                        &nbsp;|&nbsp; ZIP {zip_val}
+                        &nbsp;|&nbsp; {fmt(prop.get('cuyregion'))}
+                    </div>
                 </div>
             """, unsafe_allow_html=True)
 
-            # Section: Property Details
+            # ---- Section: Property Details ----
             st.markdown('<div class="section-title">Property Details</div>', unsafe_allow_html=True)
             st.markdown(f"""
                 <div class="property-detail-grid">
-                    <div class="property-detail">
-                        <div class="property-detail-label">Property Type</div>
-                        <div class="property-detail-value">{prop['property_type']}</div>
-                    </div>
-                    <div class="property-detail">
-                        <div class="property-detail-label">Year Built</div>
-                        <div class="property-detail-value">{int(prop['year_built'])}</div>
-                    </div>
-                    <div class="property-detail">
-                        <div class="property-detail-label">Condition</div>
-                        <div class="property-detail-value">{prop['property_condition']}</div>
-                    </div>
-                    <div class="property-detail">
-                        <div class="property-detail-label">Bedrooms</div>
-                        <div class="property-detail-value">{int(prop['bedrooms'])}</div>
-                    </div>
-                    <div class="property-detail">
-                        <div class="property-detail-label">Bathrooms</div>
-                        <div class="property-detail-value">{prop['bathrooms']}</div>
-                    </div>
-                    <div class="property-detail">
-                        <div class="property-detail-label">Square Feet</div>
-                        <div class="property-detail-value">{int(prop['square_feet']):,}</div>
-                    </div>
-                    <div class="property-detail">
-                        <div class="property-detail-label">Lot Size (sq ft)</div>
-                        <div class="property-detail-value">{int(prop['lot_size_sqft']):,}</div>
-                    </div>
+                    {detail_cell("Classification", fmt(prop.get("CLASSIFICATION_DESCR")))}
+                    {detail_cell("Zone", fmt(prop.get("zone_desc")))}
+                    {detail_cell("Style", fmt(prop.get("style")))}
+                    {detail_cell("Year Built", fmt(prop.get("yrbuilt"), fmt_int=True) if pd.notna(prop.get("yrbuilt")) and int(prop.get("yrbuilt", 0)) not in (0, 9999) else "N/A")}
+                    {detail_cell("Condition", fmt(prop.get("condition")))}
+                    {detail_cell("Stories", fmt(prop.get("numstory")))}
+                    {detail_cell("Base Sq Ft", fmt(prop.get("basesqft"), fmt_int=True))}
+                    {detail_cell("Bedrooms", fmt(prop.get("bedrooms"), fmt_int=True))}
+                    {detail_cell("Bathrooms", fmt(prop.get("baths")))}
                 </div>
             """, unsafe_allow_html=True)
 
-            # Section: Value & Tax
-            st.markdown('<div class="section-title">Value & Tax Information</div>', unsafe_allow_html=True)
+            # ---- Section: Value & Tax ----
+            st.markdown('<div class="section-title">Value & Tax</div>', unsafe_allow_html=True)
+            delq = prop.get("NET_TAX_DELQ_DUE")
+            delq_str = f'<span class="flag-yes">${int(delq):,}</span>' if pd.notna(delq) and float(delq) > 0 else '<span class="flag-no">None</span>'
             st.markdown(f"""
                 <div class="property-detail-grid">
-                    <div class="property-detail">
-                        <div class="property-detail-label">Market Value</div>
-                        <div class="property-detail-value">${int(prop['property_value']):,}</div>
-                    </div>
-                    <div class="property-detail">
-                        <div class="property-detail-label">Assessed Value</div>
-                        <div class="property-detail-value">${int(prop['assessed_value']):,}</div>
-                    </div>
-                    <div class="property-detail">
-                        <div class="property-detail-label">Annual Tax</div>
-                        <div class="property-detail-value">${int(prop['annual_tax']):,}</div>
-                    </div>
-                    <div class="property-detail">
-                        <div class="property-detail-label">Tax Delinquent</div>
-                        <div class="property-detail-value">{"Yes - $" + str(int(prop['delinquent_amount'])) if prop['tax_delinquent'] else "No"}</div>
-                    </div>
-                    <div class="property-detail">
-                        <div class="property-detail-label">Last Sale Year</div>
-                        <div class="property-detail-value">{int(prop['last_sale_year'])}</div>
-                    </div>
-                    <div class="property-detail">
-                        <div class="property-detail-label">Last Sale Price</div>
-                        <div class="property-detail-value">${int(prop['last_sale_price']):,}</div>
-                    </div>
+                    {detail_cell("Market Value", fmt(prop.get("TAX_MARKET_TOTAL"), prefix="$", fmt_int=True))}
+                    {detail_cell("CCLRC Disposition", fmt(prop.get("assessment")))}
+                    {detail_cell("Tax Delinquent", delq_str)}
+                    {detail_cell("Homestead Flag", fmt(prop.get("HOMESTEAD_FLAG")))}
+                    {detail_cell("Tax Abatement", fmt(prop.get("taxabate")))}
+                    {detail_cell("Payment Plan", fmt(prop.get("PAYMENT_PLAN_FLAG")))}
+                    {detail_cell("Cert Sold", fmt(prop.get("CERT_SOLD_FLAG")))}
                 </div>
             """, unsafe_allow_html=True)
 
-            # Section: Ownership
+            # ---- Section: Ownership & Occupancy ----
             st.markdown('<div class="section-title">Ownership & Occupancy</div>', unsafe_allow_html=True)
+            fc_flag = prop.get("FORECLOSURE_FLAG")
+            fc_str = f'<span class="flag-yes">{fc_flag}</span>' if pd.notna(fc_flag) and str(fc_flag).strip() not in ("", "0", "N", "No", "nan") else f'<span class="flag-no">{fmt(fc_flag)}</span>'
             st.markdown(f"""
                 <div class="property-detail-grid">
-                    <div class="property-detail">
-                        <div class="property-detail-label">Owner Type</div>
-                        <div class="property-detail-value">{prop['owner_type']}</div>
-                    </div>
-                    <div class="property-detail">
-                        <div class="property-detail-label">Owner</div>
-                        <div class="property-detail-value">{prop['owner_name']}</div>
-                    </div>
-                    <div class="property-detail">
-                        <div class="property-detail-label">Vacancy Status</div>
-                        <div class="property-detail-value">{prop['vacancy_status']}</div>
-                    </div>
-                    <div class="property-detail">
-                        <div class="property-detail-label">Foreclosure Status</div>
-                        <div class="property-detail-value">{prop['foreclosure_status']}</div>
-                    </div>
+                    {detail_cell("Owner", fmt(prop.get("PRIMARY_OWNER_NAME")))}
+                    {detail_cell("Mail State", fmt(prop.get("MAIL_STATE")))}
+                    {detail_cell("Listing Status", fmt(prop.get("lstatus")))}
+                    {detail_cell("Vacancy (combovac)", fmt(prop.get("combovac")))}
+                    {detail_cell("Vacant Lot", fmt(prop.get("vl")))}
+                    {detail_cell("Foreclosure", fc_str)}
+                    {detail_cell("Active Condemnation", fmt(prop.get("active_condemn")))}
+                    {detail_cell("City Land Bank", fmt(prop.get("city_lb_flag")))}
+                    {detail_cell("CCLRC", fmt(prop.get("cclrc")))}
+                    {detail_cell("HUD", fmt(prop.get("hud")))}
+                    {detail_cell("Disp. Status", fmt(prop.get("disp_status")))}
+                    {detail_cell("FO Deed Count", fmt(prop.get("fo_deed_count"), fmt_int=True))}
                 </div>
             """, unsafe_allow_html=True)
 
-            # Section: Violations & Permits
-            st.markdown('<div class="section-title">Violations & Permits</div>', unsafe_allow_html=True)
+            # ---- Section: Violations & Compliance ----
+            st.markdown('<div class="section-title">Violations & Compliance</div>', unsafe_allow_html=True)
             st.markdown(f"""
                 <div class="property-detail-grid">
-                    <div class="property-detail">
-                        <div class="property-detail-label">Lead Violations</div>
-                        <div class="property-detail-value">{int(prop['lead_violations'])}</div>
-                    </div>
-                    <div class="property-detail">
-                        <div class="property-detail-label">Building Violations</div>
-                        <div class="property-detail-value">{int(prop['building_violations'])}</div>
-                    </div>
-                    <div class="property-detail">
-                        <div class="property-detail-label">Code Violations</div>
-                        <div class="property-detail-value">{int(prop['code_violations'])}</div>
-                    </div>
-                    <div class="property-detail">
-                        <div class="property-detail-label">Lead Safe Certified</div>
-                        <div class="property-detail-value">{"Yes" if prop['lead_safe_certified'] else "No"}</div>
-                    </div>
-                    <div class="property-detail">
-                        <div class="property-detail-label">Permits Issued (5yr)</div>
-                        <div class="property-detail-value">{int(prop['permits_issued'])}</div>
-                    </div>
-                    <div class="property-detail">
-                        <div class="property-detail-label">Last Inspection</div>
-                        <div class="property-detail-value">{int(prop['last_inspection_year']) if pd.notna(prop['last_inspection_year']) else "N/A"}</div>
-                    </div>
+                    {detail_cell("Violation", fmt(prop.get("violation")))}
+                    {detail_cell("Violation Type", fmt(prop.get("violation_vtype")))}
+                    {detail_cell("Violation Task Status", fmt(prop.get("violation_task_status")))}
+                    {detail_cell("Lead Violations (BH)", fmt(prop.get("cod_current_bh_lead_violations")))}
+                    {detail_cell("Lead Safe Cert Status", fmt(prop.get("lsc_stat")))}
+                    {detail_cell("Lead Rollout", fmt(prop.get("lead_rollout")))}
+                    {detail_cell("CDC Compliance", fmt(prop.get("cdc_comp")))}
+                    {detail_cell("Council Compliance", fmt(prop.get("council_comp")))}
+                    {detail_cell("Community Design.", fmt(prop.get("cdesig")))}
                 </div>
             """, unsafe_allow_html=True)
 
-            # Section: Neighborhood Context
-            st.markdown('<div class="section-title">Neighborhood Context</div>', unsafe_allow_html=True)
+            # ---- Section: Program Flags ----
+            st.markdown('<div class="section-title">Program Flags</div>', unsafe_allow_html=True)
             st.markdown(f"""
                 <div class="property-detail-grid">
-                    <div class="property-detail">
-                        <div class="property-detail-label">Median Income (Tract)</div>
-                        <div class="property-detail-value">${int(prop['median_income_tract']):,}</div>
-                    </div>
-                    <div class="property-detail">
-                        <div class="property-detail-label">Poverty Rate (Tract)</div>
-                        <div class="property-detail-value">{prop['poverty_rate_tract']}%</div>
-                    </div>
-                    <div class="property-detail">
-                        <div class="property-detail-label">School Rating</div>
-                        <div class="property-detail-value">{int(prop['school_rating'])} / 10</div>
-                    </div>
+                    {detail_cell("Demo Status", fmt(prop.get("demo_status")))}
+                    {detail_cell("Rehab Status", fmt(prop.get("rehab_status")))}
+                    {detail_cell("Rental Registration", fmt(prop.get("rentalreg")))}
+                    {detail_cell("Section 8", fmt(prop.get("sect8")))}
+                    {detail_cell("CIA Name", fmt(prop.get("cia14_name")))}
+                    {detail_cell("Property Class", fmt(prop.get("pclass")))}
                 </div>
             """, unsafe_allow_html=True)
 
-            # Mini map showing property location
+            # ---- Section: Location map ----
             st.markdown('<div class="section-title">Location</div>', unsafe_allow_html=True)
-            if pd.notna(prop["latitude"]) and pd.notna(prop["longitude"]):
+            lat = prop.get("LATITUDE")
+            lon = prop.get("LONGITUDE")
+            if pd.notna(lat) and pd.notna(lon):
                 st.map(
-                    pd.DataFrame({"latitude": [prop["latitude"]], "longitude": [prop["longitude"]]}),
+                    pd.DataFrame({"latitude": [lat], "longitude": [lon]}),
                     latitude="latitude",
                     longitude="longitude",
                     zoom=15,
                 )
+            else:
+                st.info("No coordinates available for this property.")
 
     else:
         # No search yet — show quick links to browse by neighborhood
         st.markdown("")
         st.markdown("**Quick links — browse by neighborhood:**")
-        hood_counts = df_ps["neighborhood"].value_counts().head(10)
+        hood_counts = df_ps["NEIGHBOR10"].value_counts().head(10)
         cols = st.columns(5)
         for i, (hood, count) in enumerate(hood_counts.items()):
             with cols[i % 5]:
-                st.markdown(f'<a href="?auth=1&page=datasets" target="_self" style="color:#003071;text-decoration:none;font-weight:500;">{hood}</a> <span style="color:#999;font-size:0.85rem;">({count})</span>', unsafe_allow_html=True)
+                st.markdown(
+                    f'<a href="?auth=1&page=datasets" target="_self" style="color:#003071;text-decoration:none;font-weight:500;">{hood}</a>'
+                    f' <span style="color:#999;font-size:0.85rem;">({count})</span>',
+                    unsafe_allow_html=True
+                )
 
     # -- Footer --
     st.markdown("---")
@@ -2221,6 +2191,545 @@ elif current_page == "contact":
     """, unsafe_allow_html=True)
 
 
+elif current_page == "projects":
+    # ========================================================
+    #  POPULAR PROJECTS — Hub page listing all project tools
+    # ========================================================
+
+    st.markdown("""
+        <style>
+        .breadcrumb { font-size: 0.95rem; color: #666; margin-bottom: 1.5rem; }
+        .breadcrumb a { color: #003071; text-decoration: none; }
+        .breadcrumb a:hover { text-decoration: underline; }
+        .page-header { font-size: 2.5rem; font-weight: 700; color: #003071; margin-bottom: 0.3rem; }
+        .page-subtitle { font-size: 1.1rem; color: #666; margin-bottom: 2rem; }
+        .project-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 2rem;
+            margin-top: 1.5rem;
+        }
+        .project-card {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-top: 4px solid #003071;
+            border-radius: 6px;
+            padding: 2rem;
+            text-decoration: none !important;
+            color: inherit;
+            display: block;
+            transition: box-shadow 0.2s, transform 0.15s;
+        }
+        .project-card:hover {
+            box-shadow: 0 6px 20px rgba(0,0,0,0.1);
+            transform: translateY(-2px);
+        }
+        .project-card-coming {
+            background: #f8f9fc;
+            border: 1px solid #e0e0e0;
+            border-top: 4px solid #ccc;
+            border-radius: 6px;
+            padding: 2rem;
+            opacity: 0.6;
+        }
+        .project-card-tag {
+            display: inline-block;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #003071;
+            background: #eef2fa;
+            border-radius: 20px;
+            padding: 0.25rem 0.75rem;
+            margin-top: 1rem;
+            letter-spacing: 0.04em;
+        }
+        .project-card-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #003071;
+            margin-bottom: 0.75rem;
+        }
+        .project-card-coming .project-card-title {
+            color: #999;
+        }
+        .project-card-desc {
+            font-size: 0.95rem;
+            color: #555;
+            line-height: 1.6;
+        }
+        .project-card-coming .project-card-desc {
+            color: #bbb;
+        }
+        .coming-label {
+            display: inline-block;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #999;
+            background: #e8e8e8;
+            border-radius: 20px;
+            padding: 0.25rem 0.75rem;
+            margin-top: 1rem;
+            letter-spacing: 0.04em;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown('<div class="breadcrumb"><a href="?auth=1&page=home" target="_self">Home</a> &nbsp;/&nbsp; <strong>Popular Projects</strong></div>', unsafe_allow_html=True)
+    st.markdown("""
+        <div class="page-header">Popular Projects</div>
+        <div class="page-subtitle">Pre-built investigation tools designed around the most common NST workflows.</div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("""
+        <div class="project-grid">
+            <a href="?auth=1&page=oos-owners" target="_self" class="project-card">
+                <div class="project-card-title">Out-of-State Owner Finder</div>
+                <div class="project-card-desc">
+                    Identify parcels with out-of-state mailing addresses and layer on risk indicators
+                    including tax delinquency, vacancy, condemnation, and corporate ownership
+                    to build targeted outreach and enforcement lists.
+                </div>
+                <div class="project-card-tag">Ownership &nbsp;&middot;&nbsp; Tax &nbsp;&middot;&nbsp; Vacancy</div>
+            </a>
+            <div class="project-card-coming">
+                <div class="project-card-title">Coming Soon</div>
+                <div class="project-card-desc">
+                    A new project tool is currently in development. Check back for updates.
+                </div>
+                <div class="coming-label">In Development</div>
+            </div>
+            <div class="project-card-coming">
+                <div class="project-card-title">Coming Soon</div>
+                <div class="project-card-desc">
+                    A new project tool is currently in development. Check back for updates.
+                </div>
+                <div class="coming-label">In Development</div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("---")
+    st.markdown("""
+        <div style="text-align: center; color: #666; padding: 2rem 0;">
+            <p>Powered by CWRU Poverty Center | Last Updated: January 2026</p>
+        </div>
+    """, unsafe_allow_html=True)
+
+
+elif current_page == "oos-owners":
+    # ========================================================
+    #  OUT-OF-STATE OWNER FINDER — Guided investigation tool
+    # ========================================================
+
+    @st.cache_data
+    def load_oos_data():
+        return pd.read_csv("data/nstsample.csv", low_memory=False)
+
+    df_raw = load_oos_data()
+
+    df_oos = df_raw[
+        ~df_raw["MAIL_STATE"].fillna("").str.strip().isin(["OH", "/", ""])
+    ].copy()
+
+    CORP_PAT = r"LLC|INC|CORP|TRUST|INVEST|PROP|HOLD|GROUP|FUND|REAL"
+    df_oos["_is_corp"]       = df_oos["PRIMARY_OWNER_NAME"].fillna("").str.contains(CORP_PAT, case=False, regex=True)
+    df_oos["_delq_amt"]      = pd.to_numeric(df_oos["NET_TAX_DELQ_DUE"], errors="coerce").fillna(0)
+    df_oos["_is_delinquent"] = df_oos["_delq_amt"] > 0
+    df_oos["_is_vacant"]     = df_oos["combovac"].fillna(0).astype(float) == 1
+    df_oos["_is_condemned"]  = df_oos["active_condemn"].fillna(0).astype(float) == 1
+    df_oos["_is_foreclosure"]= df_oos["FORECLOSURE_FLAG"].fillna(0).astype(float) == 1
+    df_oos["_no_homestead"]  = df_oos["HOMESTEAD_FLAG"].fillna(0).astype(float) == 0
+
+    total_oos   = len(df_oos)
+    pct_corp    = df_oos["_is_corp"].mean() * 100
+    total_delq  = df_oos["_delq_amt"].sum()
+    vacant_oos  = int(df_oos["_is_vacant"].sum())
+    top_states  = df_oos["MAIL_STATE"].value_counts().head(5)
+
+    ind_counts = {
+        "delinquent":  int(df_oos["_is_delinquent"].sum()),
+        "no_homestead":int(df_oos["_no_homestead"].sum()),
+        "vacant":      int(df_oos["_is_vacant"].sum()),
+        "corp":        int(df_oos["_is_corp"].sum()),
+        "condemned":   int(df_oos["_is_condemned"].sum()),
+        "foreclosure": int(df_oos["_is_foreclosure"].sum()),
+    }
+
+    # ---- CSS ----
+    st.markdown("""
+        <style>
+        .breadcrumb { font-size: 0.95rem; color: #666; margin-bottom: 1rem; }
+        .breadcrumb a { color: #003071; text-decoration: none; }
+        .breadcrumb a:hover { text-decoration: underline; }
+
+        /* Hero */
+        .oos-hero {
+            background: #003071;
+            border-radius: 8px;
+            padding: 2.5rem 2.5rem 2rem 2.5rem;
+            margin-bottom: 2rem;
+        }
+        .oos-hero-title {
+            font-size: 2.4rem;
+            font-weight: 800;
+            color: white;
+            margin-bottom: 0.5rem;
+            line-height: 1.1;
+        }
+        .oos-hero-sub {
+            font-size: 1rem;
+            color: rgba(255,255,255,0.75);
+            margin-bottom: 2rem;
+        }
+        .oos-stat-num {
+            font-size: 2.6rem;
+            font-weight: 800;
+            color: white;
+            line-height: 1.05;
+        }
+        .oos-stat-label {
+            display: inline-block;
+            background: #FFD700;
+            color: #003071;
+            font-weight: 700;
+            font-size: 0.72rem;
+            padding: 0.2rem 0.75rem;
+            border-radius: 3px;
+            margin-top: 0.45rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .oos-stat-divider {
+            border-left: 1px solid rgba(255,255,255,0.2);
+            margin: 0 0.5rem;
+        }
+
+        /* Top states */
+        .states-row {
+            display: flex;
+            gap: 0.6rem;
+            flex-wrap: wrap;
+            margin: 1rem 0 0.5rem 0;
+        }
+        .state-chip {
+            background: rgba(255,255,255,0.12);
+            border: 1px solid rgba(255,255,255,0.25);
+            border-radius: 20px;
+            padding: 0.25rem 0.85rem;
+            font-size: 0.85rem;
+            color: white;
+            font-weight: 600;
+        }
+        .state-chip span { opacity: 0.65; font-weight: 400; margin-left: 0.25rem; }
+
+        /* Step headers */
+        .step-wrap {
+            display: flex;
+            align-items: flex-start;
+            gap: 1rem;
+            margin: 2.5rem 0 1rem 0;
+        }
+        .step-num {
+            background: #003071;
+            color: white;
+            min-width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 1rem;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+        .step-title { font-size: 1.25rem; font-weight: 700; color: #003071; }
+        .step-sub   { font-size: 0.88rem; color: #888; margin-top: 0.15rem; }
+
+        /* Indicator cards */
+        .ind-icon  { font-size: 1.5rem; margin-bottom: 0.35rem; }
+        .ind-title { font-size: 0.95rem; font-weight: 700; color: #003071; margin-bottom: 0.5rem; }
+        .ind-count { font-size: 2rem; font-weight: 800; color: #003071; line-height: 1.1; }
+        .ind-pct   { font-size: 0.78rem; color: #888; margin-top: 0.15rem; margin-bottom: 0.5rem; }
+        .ind-desc  { font-size: 0.8rem; color: #555; line-height: 1.45; padding-bottom: 0.6rem; border-bottom: 1px solid #eee; margin-bottom: 0.5rem; }
+
+        /* Results match banner */
+        .match-banner {
+            background: #003071;
+            color: white;
+            border-radius: 8px;
+            padding: 1.4rem 2rem;
+            display: flex;
+            align-items: center;
+            gap: 1.25rem;
+            margin-bottom: 1.25rem;
+        }
+        .match-num   { font-size: 3rem; font-weight: 800; line-height: 1; }
+        .match-text  { font-size: 1rem; opacity: 0.8; }
+        .match-label { font-size: 0.75rem; opacity: 0.6; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 0.15rem; }
+
+        /* Active filter pills */
+        .filter-pill {
+            display: inline-block;
+            background: #eef2fa;
+            color: #003071;
+            border: 1px solid #c5d0e8;
+            border-radius: 20px;
+            padding: 0.2rem 0.75rem;
+            font-size: 0.8rem;
+            font-weight: 600;
+            margin: 0.2rem 0.2rem 0.2rem 0;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+    # ---- Breadcrumb ----
+    st.markdown('<div class="breadcrumb"><a href="?auth=1&page=home" target="_self">Home</a> &nbsp;/&nbsp; <a href="?auth=1&page=projects" target="_self">Popular Projects</a> &nbsp;/&nbsp; <strong>Out-of-State Owner Finder</strong></div>', unsafe_allow_html=True)
+
+    # ---- Hero + Stats ----
+    states_html = "".join([
+        f'<span class="state-chip">{s}<span>({c:,})</span></span>'
+        for s, c in top_states.items()
+    ])
+    st.markdown(f"""
+        <div class="oos-hero">
+            <div class="oos-hero-title">Out-of-State Owner Finder</div>
+            <div class="oos-hero-sub">
+                Parcels where the owner's mailing address is outside Ohio — layered with risk signals
+                to build targeted outreach, enforcement, and acquisition lists.
+            </div>
+            <div style="display:grid; grid-template-columns: repeat(4,1fr); gap: 1.5rem;">
+                <div>
+                    <div class="oos-stat-num">{total_oos:,}</div>
+                    <div class="oos-stat-label">Out-of-State Parcels</div>
+                </div>
+                <div>
+                    <div class="oos-stat-num">{pct_corp:.0f}%</div>
+                    <div class="oos-stat-label">Corporate / LLC Owned</div>
+                </div>
+                <div>
+                    <div class="oos-stat-num">${total_delq/1000:.0f}k</div>
+                    <div class="oos-stat-label">Total Tax Delinquency</div>
+                </div>
+                <div>
+                    <div class="oos-stat-num">{vacant_oos:,}</div>
+                    <div class="oos-stat-label">Vacant Properties</div>
+                </div>
+            </div>
+            <div style="margin-top:1.5rem; font-size:0.75rem; color:rgba(255,255,255,0.5); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:0.4rem;">Top origin states</div>
+            <div class="states-row">{states_html}</div>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # ================================================================
+    #  STEP 1 — GEOGRAPHY
+    # ================================================================
+    st.markdown("""
+        <div class="step-wrap">
+            <div class="step-num">1</div>
+            <div>
+                <div class="step-title">Where do you want to investigate?</div>
+                <div class="step-sub">Narrow to specific neighborhoods, or leave blank to search all of Cuyahoga County.</div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+
+    all_hoods = sorted(df_oos["NEIGHBOR10"].dropna().unique().tolist())
+    selected_hoods = st.multiselect(
+        "Neighborhoods",
+        options=all_hoods,
+        key="oos_hoods",
+        label_visibility="collapsed",
+        placeholder="All neighborhoods — type to search and select",
+    )
+    if selected_hoods:
+        st.caption(f"{len(selected_hoods)} neighborhood(s) selected")
+
+    # ================================================================
+    #  STEP 2 — RISK SIGNALS
+    # ================================================================
+    st.markdown("""
+        <div class="step-wrap">
+            <div class="step-num">2</div>
+            <div>
+                <div class="step-title">What risk signals matter to you?</div>
+                <div class="step-sub">Each card shows how many out-of-state owners carry that flag. Check any to narrow your results.</div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+
+    def ind_card(icon, title, count, pct, desc):
+        return f"""
+            <div class="ind-title">{title}</div>
+            <div class="ind-count">{count:,}</div>
+            <div class="ind-pct">{pct:.1f}% of out-of-state owners</div>
+            <div class="ind-desc">{desc}</div>
+        """
+
+    row1 = st.columns(3)
+    with row1[0]:
+        with st.container(border=True):
+            st.markdown(ind_card("", "Tax Delinquent",
+                ind_counts["delinquent"], ind_counts["delinquent"]/total_oos*100,
+                "Owner has unpaid tax obligations outstanding on this property."),
+                unsafe_allow_html=True)
+            f_delinquent = st.checkbox("Filter by this signal", key="f_delq")
+    with row1[1]:
+        with st.container(border=True):
+            st.markdown(ind_card("", "No Homestead Exemption",
+                ind_counts["no_homestead"], ind_counts["no_homestead"]/total_oos*100,
+                "Owner does not claim homestead — they are not living at this address."),
+                unsafe_allow_html=True)
+            f_no_homestead = st.checkbox("Filter by this signal", key="f_home")
+    with row1[2]:
+        with st.container(border=True):
+            st.markdown(ind_card("", "Vacant Property",
+                ind_counts["vacant"], ind_counts["vacant"]/total_oos*100,
+                "Property is recorded as vacant in the combined vacancy field."),
+                unsafe_allow_html=True)
+            f_vacant = st.checkbox("Filter by this signal", key="f_vac")
+
+    row2 = st.columns(3)
+    with row2[0]:
+        with st.container(border=True):
+            st.markdown(ind_card("", "Corporate / LLC Owner",
+                ind_counts["corp"], ind_counts["corp"]/total_oos*100,
+                "Owner name contains LLC, INC, CORP, TRUST, or similar entity indicators."),
+                unsafe_allow_html=True)
+            f_corp = st.checkbox("Filter by this signal", key="f_corp")
+    with row2[1]:
+        with st.container(border=True):
+            st.markdown(ind_card("", "Active Condemnation",
+                ind_counts["condemned"], ind_counts["condemned"]/total_oos*100,
+                "Property has an active condemnation order on record."),
+                unsafe_allow_html=True)
+            f_condemned = st.checkbox("Filter by this signal", key="f_cond")
+    with row2[2]:
+        with st.container(border=True):
+            st.markdown(ind_card("", "In Foreclosure",
+                ind_counts["foreclosure"], ind_counts["foreclosure"]/total_oos*100,
+                "Property is currently flagged as being in the foreclosure process."),
+                unsafe_allow_html=True)
+            f_foreclosure = st.checkbox("Filter by this signal", key="f_fc")
+
+    # ================================================================
+    #  APPLY FILTERS
+    # ================================================================
+    df_filtered = df_oos.copy()
+    if f_delinquent:   df_filtered = df_filtered[df_filtered["_is_delinquent"]]
+    if f_no_homestead: df_filtered = df_filtered[df_filtered["_no_homestead"]]
+    if f_vacant:       df_filtered = df_filtered[df_filtered["_is_vacant"]]
+    if f_corp:         df_filtered = df_filtered[df_filtered["_is_corp"]]
+    if f_condemned:    df_filtered = df_filtered[df_filtered["_is_condemned"]]
+    if f_foreclosure:  df_filtered = df_filtered[df_filtered["_is_foreclosure"]]
+    if selected_hoods: df_filtered = df_filtered[df_filtered["NEIGHBOR10"].isin(selected_hoods)]
+
+    df_filtered = df_filtered.copy()
+    df_filtered["Risk Score"] = (
+        df_filtered["_is_delinquent"].astype(int) +
+        df_filtered["_no_homestead"].astype(int)  +
+        df_filtered["_is_vacant"].astype(int)     +
+        df_filtered["_is_corp"].astype(int)       +
+        df_filtered["_is_condemned"].astype(int)  +
+        df_filtered["_is_foreclosure"].astype(int)
+    )
+
+    # ================================================================
+    #  STEP 3 — RESULTS
+    # ================================================================
+    st.markdown("""
+        <div class="step-wrap">
+            <div class="step-num">3</div>
+            <div>
+                <div class="step-title">Your Results</div>
+                <div class="step-sub">Properties sorted by risk score — highest first. Export to CSV for outreach or further analysis.</div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # Active filter summary pills
+    active = []
+    if selected_hoods:  active.append(f"{len(selected_hoods)} Neighborhood(s)")
+    if f_delinquent:    active.append("Tax Delinquent")
+    if f_no_homestead:  active.append("No Homestead")
+    if f_vacant:        active.append("Vacant")
+    if f_corp:          active.append("Corporate / LLC")
+    if f_condemned:     active.append("Active Condemnation")
+    if f_foreclosure:   active.append("In Foreclosure")
+
+    if active:
+        pills = "".join([f'<span class="filter-pill">{a}</span>' for a in active])
+        st.markdown(f'<div style="margin-bottom:0.75rem;"><span style="font-size:0.82rem;color:#888;margin-right:0.5rem;">Active filters:</span>{pills}</div>', unsafe_allow_html=True)
+
+    # Match banner
+    st.markdown(f"""
+        <div class="match-banner">
+            <div class="match-num">{len(df_filtered):,}</div>
+            <div>
+                <div class="match-text">properties match your investigation</div>
+                <div class="match-label">out of {total_oos:,} total out-of-state owners</div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+
+    display_col_map = {
+        "address":                    "Address",
+        "PARCEL":                     "Parcel ID",
+        "PRIMARY_OWNER_NAME":         "Owner Name",
+        "MAIL_STATE":                 "Owner State",
+        "NEIGHBOR10":                 "Neighborhood",
+        "ward2025":                   "Ward",
+        "zip":                        "ZIP",
+        "CLASSIFICATION_DESCR":       "Classification",
+        "TAX_MARKET_TOTAL":           "Market Value ($)",
+        "NET_TAX_DELQ_DUE":           "Tax Delinquent ($)",
+        "HOMESTEAD_FLAG":             "Homestead",
+        "combovac":                   "Vacant",
+        "FORECLOSURE_FLAG":           "Foreclosure",
+        "active_condemn":             "Condemnation",
+        "lsc_stat":                   "Lead Safe Cert",
+        "rentalreg":                  "Rental Reg.",
+        "Risk Score":                 "Risk Score",
+    }
+
+    available_cols = [c for c in display_col_map if c in df_filtered.columns]
+    df_display = df_filtered[available_cols].copy()
+    df_display = df_display.rename(columns=display_col_map)
+    df_display = df_display.sort_values("Risk Score", ascending=False).reset_index(drop=True)
+
+    st.dataframe(
+        df_display,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Risk Score": st.column_config.ProgressColumn(
+                "Risk Score",
+                help="Number of risk indicators active for this property (max 6)",
+                min_value=0,
+                max_value=6,
+                format="%d",
+            ),
+            "Market Value ($)":    st.column_config.NumberColumn(format="$%d"),
+            "Tax Delinquent ($)":  st.column_config.NumberColumn(format="$%d"),
+        },
+    )
+
+    csv_export = df_display.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        label="Download Results as CSV",
+        data=csv_export,
+        file_name="oos_owners_export.csv",
+        mime="text/csv",
+    )
+
+    st.markdown("---")
+    st.markdown("""
+        <div style="text-align: center; color: #666; padding: 2rem 0;">
+            <p>Powered by CWRU Poverty Center | Last Updated: January 2026</p>
+        </div>
+    """, unsafe_allow_html=True)
+
+
 else:
     # ========================================================
     #  HOME PAGE — Landing page with hero, cards, partners
@@ -2235,7 +2744,7 @@ else:
                 <div class="hero-title">CLEVELAND'S<br>NEIGHBORHOOD STRATEGY TECHNOLOGY</div>
                 <div class="hero-buttons">
                     <a href="?auth=1&page=datasets" target="_self" class="hero-button">Find Data</a>
-                    <a href="#" class="hero-button">Popular Projects</a>
+                    <a href="?auth=1&page=projects" target="_self" class="hero-button">Popular Projects</a>
                     <a href="https://case.edu/socialwork/povertycenter/about" target="_blank" class="hero-button">Learn More</a>
                 </div>
             </div>
