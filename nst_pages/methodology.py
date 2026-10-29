@@ -21,9 +21,8 @@ def render():
         unsafe_allow_html=True,
     )
 
-    _m_tab_overview, _m_tab_vars, _m_tab_derived, _m_tab_dr, _m_tab_limits = st.tabs([
-        "Overview", "Variables Reference", "Derived Fields",
-        "Distressed Rentals Methodology", "Limitations & Caveats",
+    _m_tab_overview, _m_tab_vars, _m_tab_dr = st.tabs([
+        "Overview", "Variables Reference", "Distressed Rentals Methodology",
     ])
 
     with _m_tab_overview:
@@ -76,7 +75,7 @@ Source systems are refreshed by the county on various schedules (daily to monthl
             ("Property Characteristics", [
                 ("pclass", "Fiscal Office", "Internal administrative property class code (e.g. RESIDENTIAL, COMMERCIAL)."),
                 ("luc", "City of Cleveland", "Land use code: numeric classification of use type."),
-                ("CLASSIFICATION_DESCR", "Fiscal Office", "Full text classification (e.g. SINGLE FAMILY DWELLING). Mapped to friendlier labels in the Datasets table: see Derived Fields tab."),
+                ("CLASSIFICATION_DESCR", "Fiscal Office", "Full text classification (e.g. SINGLE FAMILY DWELLING). Mapped to friendlier labels in the Datasets table."),
                 ("yrbuilt", "Fiscal Office", "Year the primary structure was built."),
                 ("condition", "Fiscal Office appraiser", "Grade from a 6-year rotating physical inspection: EX/VG/G/AVG/F/PR/VP/US/SV. Expanded to full words in the Datasets table."),
                 ("style", "Fiscal Office", "Architectural style code (RAN=ranch, COL=colonial, etc.)."),
@@ -169,41 +168,6 @@ Source systems are refreshed by the county on various schedules (daily to monthl
                 rows = pd.DataFrame(variables, columns=["Variable", "Source", "Definition"])
                 st.dataframe(rows, use_container_width=True, hide_index=True)
 
-    with _m_tab_derived:
-        st.caption(
-            "Fields the app computes on top of the raw county data. "
-            "Each row here documents what the inference is, how it is computed, and why it is reasonable."
-        )
-
-        _derived = [
-            ("`is_cleveland` boolean",
-             "True when `ward2025` is populated (non-empty).",
-             "Cleveland ward IDs are only assigned to parcels inside city limits. Any parcel with a non-blank ward is, by definition, in Cleveland. A handful of edge-case parcels (newly annexed or county islands) can be misclassified."),
-            ("`CLASSIFICATION_DESCR` mapped labels",
-             "Raw county codes like `SINGLE FAMILY DWELLING` are mapped to friendlier labels like `Single-Family Home` in the Datasets table.",
-             "The county labels are consistent but all-caps and formal. The mapping is applied only for display; the raw values are retained behind the scenes for pattern-matching in the Distressed Rentals rental-detection logic."),
-            ("Condition code expansion",
-             "`EX → Excellent, VG → Very Good, G → Good, AVG → Average, F → Fair, PR → Poor, VP → Very Poor, US → Unsound`. `SV` (Salvage) is left as-is as a known gap.",
-             "The county appraiser assigns these codes during physical inspection. We expand only for display: comparisons and ranks in the Distressed Rentals methodology use ordinal rankings (A=4, B=3, ...)."),
-            ("Vacant composite (Map View color-coding)",
-             "A parcel is colored as 'Vacant' on the Datasets Map View when `combovac = 1` **OR** `CLASSIFICATION_DESCR` starts with `Vacant Land`.",
-             "The raw `combovac` flag covers only vacant **structures** (unoccupied buildings). Reclassified-to-vacant-land parcels have no structure and so `combovac = 0`, but they are vacant in every colloquial sense. The composite matches the WRLC / Thriving Communities Institute convention: 'vacant property' = either vacant structure OR vacant lot."),
-            ("Date conversion",
-             "Sale dates in the source data are stored as a number (days counted from a reference date) rather than a readable date. These are converted into standard YYYY-MM-DD format for display and sorting.",
-             "Without this step, users would see values like `22344.0` instead of `2021-03-15`."),
-            ("Address reconstruction",
-             "When the primary address field is empty or starts with `0`, the app rebuilds the address from the separate house number and street name fields, and strips any leading `0` placeholder.",
-             "The county records `0 MAIN ST` for parcels where no house number is on file. We treat that as missing and reconstruct a usable address when possible."),
-            ("Blank value normalization",
-             "The source data sometimes stores the literal word `NONE` in a text field to mean 'no value', rather than leaving the field truly empty. We convert these to real blanks.",
-             "Without this step, a tenant looking for a landlord's name might see `NONE` and not realize it just means the field is empty."),
-        ]
-
-        for name, logic, why in _derived:
-            with st.expander(name, expanded=False):
-                st.markdown(f"**Computed as:** {logic}")
-                st.markdown(f"**Why this is a reasonable inference:** {why}")
-
     with _m_tab_dr:
         st.markdown(
             "The Distressed Rentals page flags rental properties that show signs of extractive ownership: landlords who neglect upkeep, let violations pile up, and extract rent without reinvesting. "
@@ -286,47 +250,6 @@ Source systems are refreshed by the county on various schedules (daily to monthl
             "- Keeps the Top Portfolios section focused on real landlords.\n"
             "- Does not touch the per-parcel distress score."
         )
-
-    with _m_tab_limits:
-        st.caption("Known data gaps, assumptions that may not hold, and improvements planned or in progress.")
-
-        _limits = [
-            ("One complaint source currently missing",
-             "The Distressed Rentals complaint flag looks at six complaint sources (CDC, City Council, Mayor's office, MAC, Public, Other). An earlier CIA complaint source was deprecated by the city and the Mayor's office source has not yet begun populating.",
-             "Complaint flag coverage is slightly undercounted today. Will self-correct as the Mayor's office source comes online."),
-            ("2.5% owner-occupant tax reduction approximated by Homestead flag",
-             "The rental-detection logic uses the Homestead Exemption as the signal of owner-occupancy. A secondary signal (the Ohio 2.5% owner-occupant tax reduction) exists in the historical data but is not yet included in the main dataset.",
-             "Owner-occupied properties that qualify for the 2.5% reduction but not the Homestead Exemption may be misclassified as possibly rental. The fix is a planned addition to the nightly data export."),
-            ("Grade decline requires both surveys to cover the parcel",
-             "The 'grade declined 2015 → 2023' indicator can only fire when BOTH `tci2015_survey_grade` AND `wrlc23_results` have A-F values for the parcel. Properties surveyed in only one year are NULL (not counted as declined, but also not counted as stable).",
-             "Coverage gap: about 30-40% of parcels lack one or both surveys. For those, this indicator is silent."),
-            ("Date windows are fixed",
-             "The violation and complaint recency checks use the fixed window 2021-01-01 to 2026-07-31. The window does not automatically slide forward as time passes.",
-             "Properties with violations in late 2026 and beyond will not count toward the distress score until the window is updated."),
-            ("Zillow / third-party inconsistencies",
-             "Property Type sometimes shows `Vacant Land` for a parcel that external sites (Zillow, Redfin) still show as a 5-bedroom house. This usually reflects a recent demolition or county reclassification that external aggregators have not caught yet.",
-             "The county classification is authoritative for NST. External sites may lag by months."),
-            ("`combovac` only flags vacant structures, not vacant lots",
-             "The raw combovac field is sourced from USPS, city vacancy lists, and water shutoffs: all of which assume a building exists. Vacant lots never trigger it.",
-             "The Datasets Map View color-coding uses a composite that includes vacant land classification; the raw combovac is kept as-is in filters so researchers can isolate structural vacancy specifically."),
-            ("Mail-drop detection is a heuristic",
-             "The `unique_entity_count / true_portfolio_size > 0.5 AND size ≥ 10` rule catches commercial mail services but may misflag genuine multi-family-office arrangements with many partners.",
-             "The toggle to re-include mail drops is available in the Portfolio Filters."),
-            ("Portfolio size counts all parcels at an address, not just rentals",
-             "A government land bank at 601 Lakeside with 13,000+ parcels will show a very high `true_portfolio_size` even though most parcels are vacant lots, not rentals. The 'Rentals in Filter' column shows the subset relevant to the current view.",
-             "Filter by Owner Type = 'Non-Profit/Government' = No to exclude. Future improvement: a 'rentals-only portfolio size' alongside the total."),
-            ("Owner classification is name-regex based",
-             "If an individual's name happens to contain a corporate keyword (e.g. `MARY HOLDINGS` as a surname) it will mis-classify as corporate. The inverse (an LLC that doesn't contain any corporate keyword) is also possible but rare.",
-             "Spot-check expected categories periodically. Could be improved by cross-referencing with the Ohio Secretary of State business registry."),
-            ("`parcel_status` field assumed CURRENT",
-             "We filter out parcels where `parcel_status` is anything other than CURRENT. If the field is NULL we keep the parcel; this is almost always correct for recent exports but could mask some stale records.",
-             "A fully-expired parcel with a NULL status would slip through. Unlikely but possible."),
-        ]
-
-        for title, what, impact in _limits:
-            with st.expander(title, expanded=False):
-                st.markdown(f"**What's going on:** {what}")
-                st.markdown(f"**Impact / mitigation:** {impact}")
 
     st.markdown("---")
     st.caption(

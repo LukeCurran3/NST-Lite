@@ -18,7 +18,7 @@ def render():
     st.markdown(
         '<div style="font-size:1.1rem;color:#666;margin-bottom:1.5rem;">'
         'Rental properties flagged with signs of distress or extractive ownership. '
-        'Based on the <a href="?auth=1&page=home" style="color:#003071;">Center on Poverty &amp; Community Development</a> methodology: '
+        'See the <a href="?auth=1&page=methodology" style="color:#003071;">Methodology</a> page for details on the '
         'rental universe, five distress indicators (tax delinquency, violations, complaints, grade decline, evictions), '
         'and owner classification.'
         '</div>',
