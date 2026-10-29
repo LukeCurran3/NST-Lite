@@ -7,3 +7,6 @@ __pycache__/
 # Large data files — do not commit
 data/*.csv
 data/*.sas7bdat
+data/*.parquet
+data/*.zip
+data/parquets917/
