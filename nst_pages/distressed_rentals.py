@@ -173,7 +173,7 @@ def render():
         display["Delinquent"]  = display["delinquent_flag"].map(_yn)
         display["Violation"]   = display["violation_flag"].map(_yn)
         display["Complaint"]   = display["complaint_flag"].map(_yn)
-        display["Grade↓"]      = display["grade_declined_flag"].map(lambda v: "Yes" if v == 1 else ("No" if v == 0 else "-"))
+        display["Grade↓"]      = display["grade_declined_flag"].map(lambda v: "-" if pd.isna(v) else ("Yes" if v == 1 else "No"))
         display["Evictions"]   = display["eviction_cases_total"].fillna(0).astype(int)
         display["Investor"]    = display["investor_flag"].map(_yn)
         display["Market Value"] = display["TAX_MARKET_TOTAL"].apply(
