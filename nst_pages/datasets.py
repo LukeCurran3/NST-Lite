@@ -31,8 +31,8 @@ def render():
     st.markdown('<div class="breadcrumb"><a href="?auth=1&page=home" target="_self">Home</a> &nbsp;/&nbsp; <strong>Datasets</strong></div>', unsafe_allow_html=True)
     st.markdown('<div class="page-header">Datasets</div><div class="page-subtitle">Browse and download comprehensive property data for Cleveland and Cuyahoga County.</div>', unsafe_allow_html=True)
 
-    if "ds_preset" not in st.session_state:
-        st.session_state.ds_preset = None
+    if "ds_presets" not in st.session_state:
+        st.session_state.ds_presets = set()
 
     st.markdown('<div class="preset-section">', unsafe_allow_html=True)
     pr1, pr2, pr3, pr4, pr5, pr6 = st.columns(6)
@@ -46,10 +46,13 @@ def render():
     }
     for p_label, p_col in preset_map.items():
         with p_col:
-            is_active = st.session_state.ds_preset == p_label
+            is_active = p_label in st.session_state.ds_presets
             btn_label = f"✓ {p_label}" if is_active else p_label
             if st.button(btn_label, use_container_width=True, key=f"preset_{p_label}"):
-                st.session_state.ds_preset = None if is_active else p_label
+                if is_active:
+                    st.session_state.ds_presets.discard(p_label)
+                else:
+                    st.session_state.ds_presets.add(p_label)
                 st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -227,18 +230,18 @@ def render():
 
     filtered_df = df.copy()
 
-    p = st.session_state.ds_preset
-    if p == "Vacant Properties":
+    active_presets = st.session_state.ds_presets
+    if "Vacant Properties" in active_presets:
         filtered_df = filtered_df[filtered_df["combovac"].fillna(0) == 1]
-    elif p == "With Violations":
+    if "With Violations" in active_presets:
         filtered_df = filtered_df[filtered_df["violation"].fillna(0) == 1]
-    elif p == "Tax Delinquent":
+    if "Tax Delinquent" in active_presets:
         filtered_df = filtered_df[filtered_df["NET_TAX_DELQ_DUE"].fillna(0) > 0]
-    elif p == "Out-of-State Owners":
+    if "Out-of-State Owners" in active_presets:
         filtered_df = filtered_df[~filtered_df["MAIL_STATE"].fillna("").isin(["OH", "/", ""])]
-    elif p == "In Foreclosure":
+    if "In Foreclosure" in active_presets:
         filtered_df = filtered_df[filtered_df["FORECLOSURE_FLAG"].fillna(0) == 1]
-    elif p == "Failed Lead Cert":
+    if "Failed Lead Cert" in active_presets:
         filtered_df = filtered_df[filtered_df["lsc_stat"].fillna("").astype(str).isin(["FAIL", "REVOKED"])]
 
     if search_query:
