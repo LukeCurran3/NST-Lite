@@ -174,81 +174,74 @@ Source systems are refreshed by the county on various schedules (daily to monthl
             "The process has five stages: filter to current parcels, identify which parcels are rentals, compute five distress indicators per property, classify owners by type, and group parcels that share a tax mailing address to detect portfolios hidden across multiple LLCs."
         )
 
-        st.markdown("### Stage 1: Base Filtering")
+        st.markdown("### Stage 1: Active Parcels Only")
         st.markdown(
-            "- Parcel ID must match `NNN-NN-NNN` format (filters out malformed records).\n"
-            "- `parcel_status` must be `CURRENT` (filters out expired/consolidated parcels)."
+            "The analysis starts by restricting to parcels that are currently active in the county's records. "
+            "Expired, split, or consolidated parcels are excluded."
         )
 
-        st.markdown("### Stage 2: Rental Universe (`rent_flag`)")
+        st.markdown("### Stage 2: Identifying the Rental Universe")
         st.markdown(
-            "Each parcel is assigned one of four values. We retain only parcels with `rent_flag IN (1, 2)` as the rental universe. "
-            "**Order matters**: the first matching rule wins:"
+            "Each property is evaluated to determine whether it is likely a rental. "
+            "Non-residential properties (industrial, agricultural, vacant land, common areas) are excluded. "
+            "Properties with an active homestead exemption are treated as owner-occupied. "
+            "Multi-family buildings, apartments, LLCs, and properties with active rental registrations are included as confirmed or probable rentals."
         )
         rent_rules = pd.DataFrame([
-            ("99: Not applicable", "`pclass` is AGRICULTURAL / PUBLIC UTILITIES / INDUSTRIAL / LAND BANK / MISSING / COMMON AREA / COMMUNITY SHOPPING CENTER / DAY CARE CENTERS"),
-            ("2: Possibly a rental", "SFH or Condo owned by an LLC"),
-            ("0: Not a rental (owner-occupied)", "SFH or Condo with `HOMESTEAD_FLAG = 1`"),
-            ("2: Possibly a rental", "Two-Family or Three-Family Dwelling (multi-family housing is almost always rental)"),
-            ("99: Not applicable", "No building AND zero building value (vacant land)"),
-            ("2: Possibly a rental", "SFH or Condo with no homestead flag (likely rented out)"),
-            ("1: Confirmed rental", "`RR_status` is ACTIVE / ABOUT TO EXPIRE / REGISTRATION RENEWED"),
-            ("1: Confirmed rental", "`CLASSIFICATION_DESCR` contains `APARTMENT`"),
-            ("99: Default", "Catch-all for anything else"),
-        ], columns=["rent_flag → Meaning", "Rule"])
+            ("Excluded", "Non-residential property types (industrial, agricultural, vacant land, common areas)"),
+            ("Excluded", "Single-family or condo with a homestead exemption (owner-occupied)"),
+            ("Probable rental", "Single-family or condo owned by a corporate entity (LLC, Inc, etc.)"),
+            ("Probable rental", "Two-family or three-family dwelling"),
+            ("Probable rental", "Single-family or condo with no homestead exemption"),
+            ("Confirmed rental", "Property with an active City of Cleveland rental registration"),
+            ("Confirmed rental", "Apartment building"),
+        ], columns=["Classification", "Criteria"])
         st.dataframe(rent_rules, use_container_width=True, hide_index=True)
 
         st.markdown("### Stage 3: Five Distress Indicators")
         st.markdown(
-            "Each is a 0 / 1 flag. The sum (0-5) is the `distress_score`. "
-            "The 5-year window is **2021-01-01 to 2026-07-31**: recent enough to reflect current ownership behavior, long enough to capture persistent patterns."
+            "Each property is scored on five indicators of neglect or disinvestment. "
+            "The total score (0 to 5) reflects how many signs of distress a property shows. "
+            "All recency-based indicators use a five-year window to capture current ownership behavior."
         )
         distress = pd.DataFrame([
-            ("1. Tax Delinquency", "`NET_TAX_DELQ_DUE ≥ 500`", "A $500 floor filters out trivial amounts that are often data lag / rounding."),
-            ("2. Violation in last 5 years", "`violation_file_date` falls within the 5-year window", "Captures active patterns of neglect; older unresolved violations are already reflected elsewhere."),
-            ("3. Complaint in last 5 years", "Any of CDC / Council / Mayor / MAC / Public / Other complaint date falls within the window", "Any-source signal because complaint origin varies by neighborhood."),
-            ("4. Grade declined 2015 → 2023", "`wrlc23_results` grade < `tci2015_survey_grade` on the A=4 ... F=0 scale (NULL if either is missing)", "Direct evidence of exterior deterioration across the two most recent walking surveys."),
-            ("5. Any evictions 2021-2025", "`cases_filed_2021 + ... + cases_filed_2025 > 0`", "Even one eviction is a meaningful signal; the exact count is also shown as a column."),
-        ], columns=["Indicator", "Logic", "Rationale"])
+            ("Tax Delinquency", "The property owes more than $500 in overdue property taxes.", "A meaningful threshold that filters out minor billing lag."),
+            ("Code Violation", "A housing code violation was filed against this property in the last five years.", "Captures active patterns of neglect."),
+            ("Complaint Filed", "A complaint was filed by a resident, council member, CDC, or other source in the last five years.", "Complaint origin varies by neighborhood; any source counts."),
+            ("Condition Declined", "The property's exterior condition grade worsened between the 2015 and 2023 surveys.", "Direct evidence of physical deterioration over time."),
+            ("Eviction Filed", "At least one eviction case was filed at this address between 2021 and 2025.", "Even a single eviction is a meaningful signal of housing instability."),
+        ], columns=["Indicator", "What it means", "Why it matters"])
         st.dataframe(distress, use_container_width=True, hide_index=True)
 
         st.markdown("### Stage 4: Owner Classification")
         st.markdown(
-            "Each owner is classified into one `owner_type` by matching `PRIMARY_OWNER_NAME` against ordered regex patterns. "
-            "**Non-Profit/Government is checked first** so a `LAND BANK LLC` is not mis-classified as a corporate entity."
+            "Each property's owner name is classified into one of six categories based on how it is registered. "
+            "Government and nonprofit entities are identified first to avoid misclassifying a city-affiliated LLC as a private investor."
         )
         owner_rules = pd.DataFrame([
-            ("Non-Profit / Government", "`CITY OF`, `COUNTY OF`, `TOWNSHIP`, `DEPARTMENT`, `AUTHORITY`, `COMMISSION`, `CHURCH`, `CMHA`, `LAND BANK`, `UNIVERSITY`, `HOSPITAL`, and ~20 more"),
-            ("Corporate Entity", "`LLC`, `INC`, `CORP`, `HOLDINGS`, `PROPERTIES`, `REALTY`, `INVESTMENTS`, `MANAGEMENT`, `CAPITAL`, `FUND`, and ~20 more"),
-            ("Trust", "`TRUST`, `TRUSTEE`, `REVOCABLE`, `IRREVOCABLE`, `LIVING TRUST`, `FAMILY TRUST`"),
-            ("Joint Ownership", "` & `, ` AND `, `JT`, `JOINT`, `JTWROS`, `JT TEN`"),
-            ("Individual", "Two uppercase words (e.g. `SMITH, JOHN`)"),
-            ("Unknown / Missing", "Catch-all for empty names or no pattern match"),
-        ], columns=["Owner Type", "Regex pattern matches"])
+            ("Non-Profit / Government", "City agencies, county offices, churches, universities, hospitals, CMHA, land banks, and similar public or charitable entities."),
+            ("Corporate Entity", "LLCs, corporations, holding companies, property management firms, investment funds, and similar for-profit entities."),
+            ("Trust", "Living trusts, family trusts, revocable or irrevocable trusts."),
+            ("Joint Ownership", "Properties jointly held by two or more individuals (indicated by 'and', '&', or joint tenancy designations)."),
+            ("Individual", "A single person identified by name."),
+            ("Unknown / Missing", "Owner name is blank or does not match any of the above."),
+        ], columns=["Owner Type", "Description"])
         st.dataframe(owner_rules, use_container_width=True, hide_index=True)
 
-        st.markdown("### Stage 5: Portfolio Clustering")
+        st.markdown("### Stage 5: Portfolio Detection")
         st.markdown(
-            "Groups parcels by their tax mailing address to detect landlords who split a single portfolio across multiple LLCs that all mail to one location."
-        )
-        st.markdown(
-            "1. Take the most recent tax billing record for each parcel.\n"
-            "2. Standardize the mailing address (uppercase, remove punctuation, normalize spacing) and append the 5-digit ZIP so near-duplicates collapse into one key.\n"
-            "3. Group every parcel in the county by that cleaned address.\n"
-            "4. For each address, compute: total parcels at that address, number of distinct owner names, the most common name, and the full list of entity names.\n"
-            "5. Attach those portfolio stats back to each rental so you can see 'this parcel belongs to a 47-parcel portfolio with 12 different LLC names'."
+            "Some landlords obscure the true size of their portfolio by registering properties under multiple LLC names. "
+            "To detect this, all properties in the county are grouped by their tax mailing address. "
+            "If several differently-named entities all receive mail at the same location, they are likely controlled by the same person or organization. "
+            "Each rental is then tagged with the total number of properties and entity names associated with that mailing address, "
+            "so a user can see that a property belongs to a landlord who effectively controls dozens of parcels under different names."
         )
 
-        st.markdown("### Mail-Drop Detection")
+        st.markdown("### Filtering Out Mail Drops")
         st.markdown(
-            "An address is classified as a **likely mail drop** when `unique_entity_count / true_portfolio_size > 0.5` AND `true_portfolio_size ≥ 10`. "
-            "In plain English: if more than half of the parcels at a shared mailing address have distinct owner names and there are at least 10 of them, "
-            "it is almost certainly a commercial mail-forwarding service (not one landlord using shell entities)."
-        )
-        st.markdown(
-            "- Hidden by default in the UI (toggle to show).\n"
-            "- Keeps the Top Portfolios section focused on real landlords.\n"
-            "- Does not touch the per-parcel distress score."
+            "Some mailing addresses are commercial mail services used by hundreds of unrelated owners. "
+            "These are automatically filtered out by default, since they do not indicate a single controlling landlord. "
+            "A toggle in the Portfolio Filters section lets users include them if needed."
         )
 
     st.markdown("---")
