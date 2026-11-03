@@ -19,7 +19,7 @@ def get_base64_image(image_path):
 # Must be the first st call.
 st.set_page_config(
     page_title="Cleveland NST 2.0",
-    page_icon="assets/updated_nst_favicon.svg",
+    page_icon="assets/logo.png",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
@@ -238,7 +238,7 @@ st.markdown("""
     }
     .hero-button:hover {
         background-color: white;
-        color: #003071;
+        color: #003071 !important;
     }
 
     .data-section-title {
@@ -410,6 +410,19 @@ st.markdown("""
         color: white;
         transform: translateY(-5px);
         box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+    }
+
+    /* Tabs: full-width, equal sizing, larger text */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 0;
+        width: 100%;
+    }
+    .stTabs [data-baseweb="tab"] {
+        font-size: 1.05rem !important;
+        font-weight: 600 !important;
+        flex: 1 1 0 !important;
+        justify-content: center !important;
+        padding: 0.75rem 0.5rem !important;
     }
     </style>
 """, unsafe_allow_html=True)

@@ -26,7 +26,7 @@ def render():
     def flag(val):
         try:
             v = int(float(val))
-            return '<span style="color:#c0392b;font-weight:600;">Yes</span>' if v == 1 else '<span style="color:#27ae60;font-weight:600;">No</span>'
+            return '<span style="color:#c0392b;font-weight:600;">Yes</span>' if v == 1 else '<span style="color:#1e8449;font-weight:600;">No</span>'
         except (ValueError, TypeError):
             return fmt(val)
 
@@ -175,7 +175,7 @@ def render():
                 delq = prop.get("NET_TAX_DELQ_DUE")
                 delq_disp = (f'<span style="color:#c0392b;font-weight:600;">${int(float(delq)):,}</span>'
                              if pd.notna(delq) and delq and float(delq) > 0
-                             else '<span style="color:#27ae60;font-weight:600;">None</span>')
+                             else '<span style="color:#1e8449;font-weight:600;">None</span>')
                 st.markdown(grid(
                     cell("Market Value",      fmt(prop.get("TAX_MARKET_TOTAL"), prefix="$", fmt_int=True)),
                     cell("Land Value",        fmt(prop.get("TAX_MARKET_LAND"), prefix="$", fmt_int=True)),

@@ -84,6 +84,10 @@ def load_data():
     df['address'] = df['address'].replace(r'^0+$', pd.NA, regex=True)
     df['address'] = df['address'].replace('', pd.NA)
 
+    # Recode implausible year built values to null (county records pre-1800 are data errors).
+    if 'yrbuilt' in df.columns:
+        df['yrbuilt'] = df['yrbuilt'].where(df['yrbuilt'] >= 1800, other=pd.NA)
+
     df['is_cleveland'] = df['ward2025'].fillna('').str.strip().ne('')
 
     # SAS date serial (days since 1960-01-01) to YYYY-MM-DD.
@@ -140,16 +144,44 @@ def load_neighborhood_data(hood_name):
     return df
 
 
+_STREET_SUFFIXES = {
+    "AVE", "AVENUE", "ST", "STREET", "BLVD", "BOULEVARD", "RD", "ROAD",
+    "DR", "DRIVE", "LN", "LANE", "CT", "COURT", "PL", "PLACE",
+    "PKWY", "PARKWAY", "WAY", "CIR", "CIRCLE", "TER", "TERRACE",
+    "TRAIL", "CRES", "CRESCENT", "HWY", "HIGHWAY",
+}
+
+def _strip_suffix(query):
+    tokens = query.upper().split()
+    if len(tokens) > 1 and tokens[-1] in _STREET_SUFFIXES:
+        return " ".join(query.split()[:-1])
+    return query
+
+
+def _normalize_parcel(s):
+    """If s looks like a dashless parcel (8 digits), reformat as NNN-NN-NNN."""
+    import re
+    digits = re.sub(r'\D', '', s)
+    if len(digits) == 8:
+        return f"{digits[:3]}-{digits[3:5]}-{digits[5:]}"
+    return None
+
+
 @st.cache_data
 def ps_search(query):
     q = query.strip().replace("'", "''")
+    q_stripped = _strip_suffix(query.strip()).replace("'", "''")
+    extra_clause = f"OR UPPER(address) LIKE UPPER('%{q_stripped}%')" if q_stripped.upper() != q.upper() else ""
+    normalized = _normalize_parcel(query.strip())
+    parcel_clause = f"OR UPPER(PARCEL) LIKE '%{normalized.upper()}%'" if normalized else ""
     return duckdb.query(f"""
         SELECT * FROM 'data/parquets917/nst.parquet'
         WHERE regexp_matches(PARCEL, '^\d{{3}}-\d{{2}}-\d{{3}}')
-          AND address IS NOT NULL AND TRIM(address) != ''
           AND (
-            UPPER(address) LIKE UPPER('%{q}%')
+            (address IS NOT NULL AND TRIM(address) != '' AND UPPER(address) LIKE UPPER('%{q}%'))
+            {f"OR (address IS NOT NULL AND TRIM(address) != '' AND UPPER(address) LIKE UPPER('%{q_stripped}%'))" if q_stripped.upper() != q.upper() else ""}
             OR UPPER(PARCEL) LIKE '%{q.upper()}%'
+            {parcel_clause}
             OR UPPER(PRIMARY_OWNER_NAME) LIKE UPPER('%{q}%')
             OR UPPER(COALESCE(number,'') || ' ' || COALESCE(street,'')) LIKE UPPER('%{q}%')
           )

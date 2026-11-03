@@ -25,6 +25,17 @@ def render():
         .stat-box .stat-value { font-size: 1.6rem; font-weight: 700; color: #003071; }
         .stat-box .stat-label { font-size: 0.85rem; color: #666; }
         .preset-section { margin-bottom: 0.75rem; }
+        .preset-section button {
+            min-height: 6rem !important;
+            height: auto !important;
+            white-space: normal !important;
+        }
+        .preset-section button [data-testid="stMarkdownContainer"] p {
+            font-size: 1.35rem !important;
+            font-weight: 700 !important;
+            line-height: 1.4 !important;
+            white-space: normal !important;
+        }
         </style>
     """, unsafe_allow_html=True)
 
@@ -42,7 +53,7 @@ def render():
         "Tax Delinquent": pr3,
         "Out-of-State Owners": pr4,
         "In Foreclosure": pr5,
-        "Failed Lead Cert": pr6,
+        "Failed Lead Certification": pr6,
     }
     for p_label, p_col in preset_map.items():
         with p_col:
@@ -84,7 +95,8 @@ def render():
         yr_valid = yr_valid[(yr_valid > 0) & (yr_valid < 9999)]
         yr_min_data = int(yr_valid.min())
         yr_max_data = int(yr_valid.max())
-        f_year_range = st.slider("Year Built", yr_min_data, yr_max_data, (yr_min_data, yr_max_data), key="f_yr")
+        yr_default_min = max(yr_min_data, 1950)
+        f_year_range = st.slider("Year Built", yr_min_data, yr_max_data, (yr_default_min, yr_max_data), key="f_yr")
 
     sf4, sf5 = st.columns(2)
     with sf4:
@@ -102,12 +114,6 @@ def render():
     with sf5:
         conditions = ["All"] + sorted(df["condition"].dropna().astype(str).replace("nan","").pipe(lambda s: s[s != ""]).unique().tolist())
         f_condition = st.selectbox("Condition", conditions, key="f_cond")
-
-    tg1, tg2, tg3, tg4 = st.columns(4)
-    with tg1: f_vacant = st.checkbox("Vacant only", key="f_vac")
-    with tg2: f_violations = st.checkbox("Has violations", key="f_viol")
-    with tg3: f_tax_del = st.checkbox("Tax delinquent", key="f_tax")
-    with tg4: f_foreclosure_flag = st.checkbox("In foreclosure", key="f_fore")
 
     with st.expander("Advanced Filters"):
         with st.expander("Property Characteristics"):
@@ -241,14 +247,32 @@ def render():
         filtered_df = filtered_df[~filtered_df["MAIL_STATE"].fillna("").isin(["OH", "/", ""])]
     if "In Foreclosure" in active_presets:
         filtered_df = filtered_df[filtered_df["FORECLOSURE_FLAG"].fillna(0) == 1]
-    if "Failed Lead Cert" in active_presets:
+    if "Failed Lead Certification" in active_presets:
         filtered_df = filtered_df[filtered_df["lsc_stat"].fillna("").astype(str).isin(["FAIL", "REVOKED"])]
 
     if search_query:
         q = search_query.strip()
+        # Strip common street suffixes from the end of the query so that
+        # "1234 Main Ave" also matches "1234 Main St" in the database.
+        _SUFFIXES = {
+            "AVE", "AVENUE", "ST", "STREET", "BLVD", "BOULEVARD", "RD", "ROAD",
+            "DR", "DRIVE", "LN", "LANE", "CT", "COURT", "PL", "PLACE",
+            "PKWY", "PARKWAY", "WAY", "CIR", "CIRCLE", "TER", "TERRACE",
+            "TRAIL", "CRES", "CRESCENT", "HWY", "HIGHWAY",
+        }
+        _tokens = q.upper().split()
+        _q_stripped = q
+        if len(_tokens) > 1 and _tokens[-1] in _SUFFIXES:
+            _q_stripped = " ".join(q.split()[:-1])
+        import re as _re
+        _digits = _re.sub(r'\D', '', q)
+        _parcel_norm = f"{_digits[:3]}-{_digits[3:5]}-{_digits[5:]}" if len(_digits) == 8 else None
+        _parcel_col = filtered_df["PARCEL"].fillna("").astype(str)
         mask = (
             filtered_df["address"].fillna("").str.contains(q, case=False, regex=False)
-            | filtered_df["PARCEL"].fillna("").astype(str).str.contains(q, case=False, regex=False)
+            | filtered_df["address"].fillna("").str.contains(_q_stripped, case=False, regex=False)
+            | _parcel_col.str.contains(q, case=False, regex=False)
+            | (_parcel_col.str.contains(_parcel_norm, case=False, regex=False) if _parcel_norm else False)
             | filtered_df["PRIMARY_OWNER_NAME"].fillna("").str.contains(q, case=False, regex=False)
         )
         filtered_df = filtered_df[mask]
@@ -274,15 +298,6 @@ def render():
         (filtered_df["TAX_MARKET_TOTAL"].fillna(0) >= f_value_range[0]) &
         (filtered_df["TAX_MARKET_TOTAL"].fillna(0) <= f_value_range[1])
     ]
-
-    if f_vacant:
-        filtered_df = filtered_df[filtered_df["combovac"].fillna(0) == 1]
-    if f_violations:
-        filtered_df = filtered_df[filtered_df["violation"].fillna(0) == 1]
-    if f_tax_del:
-        filtered_df = filtered_df[filtered_df["NET_TAX_DELQ_DUE"].fillna(0) > 0]
-    if f_foreclosure_flag:
-        filtered_df = filtered_df[filtered_df["FORECLOSURE_FLAG"].fillna(0) == 1]
 
     if f_style != "All":
         filtered_df = filtered_df[filtered_df["style"].astype(str) == f_style]
@@ -699,7 +714,7 @@ def render():
                                     <tr><td style="color:#666;padding:2px 0;">Condition</td><td style="text-align:right;font-weight:600;">{_fmt_text(row.get('condition'))}</td></tr>
                                     <tr><td style="color:#666;padding:2px 0;">Owner</td><td style="text-align:right;font-weight:600;">{_fmt_text(row.get('PRIMARY_OWNER_NAME'))}</td></tr>
                                     <tr><td style="color:#666;padding:2px 0;">Market Value</td><td style="text-align:right;font-weight:600;">{val_str}</td></tr>
-                                    <tr><td style="color:#666;padding:2px 0;">Tax Delinquent</td><td style="text-align:right;font-weight:600;color:{'#c0392b' if delq_str != 'None' else '#27ae60'};">{delq_str}</td></tr>
+                                    <tr><td style="color:#666;padding:2px 0;">Tax Delinquent</td><td style="text-align:right;font-weight:600;color:{'#c0392b' if delq_str != 'None' else '#1e8449'};">{delq_str}</td></tr>
                                     <tr><td style="color:#666;padding:2px 0;">Vacant</td><td style="text-align:right;font-weight:600;">{_flag_yn(row.get('combovac'))}</td></tr>
                                     <tr><td style="color:#666;padding:2px 0;">In Foreclosure</td><td style="text-align:right;font-weight:600;">{_flag_yn(row.get('FORECLOSURE_FLAG'))}</td></tr>
                                     <tr><td style="color:#666;padding:2px 0;">Has Violation</td><td style="text-align:right;font-weight:600;">{_flag_yn(row.get('violation'))}</td></tr>
@@ -763,23 +778,61 @@ def render():
                     title_font=dict(size=13, color="#003071"),
                     margin=dict(l=10, r=20, t=40, b=10),
                     xaxis_title="", yaxis_title="",
+                    xaxis=dict(fixedrange=True),
+                    yaxis=dict(fixedrange=True),
                 )
                 fig.update_traces(hovertemplate="%{y}<br><b>%{x:,}</b><extra></extra>")
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True, config={"scrollZoom": False, "displayModeBar": False})
             with ch2:
-                nbh_counts = filtered_df["NEIGHBOR10"].value_counts().head(10)
-                st.bar_chart(nbh_counts, color="#FFD700")
-                st.caption("Properties by Neighborhood (top 10)")
+                nbh_counts = filtered_df["NEIGHBOR10"].value_counts().head(10).reset_index()
+                nbh_counts.columns = ["Neighborhood", "Count"]
+                fig2 = px.bar(nbh_counts, x="Count", y="Neighborhood", orientation="h",
+                              title="Properties by Neighborhood (top 10)",
+                              color_discrete_sequence=["#FFD700"])
+                fig2.update_layout(
+                    plot_bgcolor="white", paper_bgcolor="white", height=320,
+                    font=dict(family="Inter, Arial, sans-serif", size=12),
+                    title_font=dict(size=13, color="#003071"),
+                    margin=dict(l=10, r=20, t=40, b=10),
+                    xaxis=dict(fixedrange=True), yaxis=dict(fixedrange=True),
+                    xaxis_title="", yaxis_title="",
+                )
+                fig2.update_traces(hovertemplate="%{y}<br><b>%{x:,}</b><extra></extra>")
+                st.plotly_chart(fig2, use_container_width=True, config={"scrollZoom": False, "displayModeBar": False})
 
             ch3, ch4 = st.columns(2)
             with ch3:
-                cond_counts = filtered_df["condition"].value_counts()
-                st.bar_chart(cond_counts, color="#003071")
-                st.caption("Property Condition")
+                cond_counts = filtered_df["condition"].value_counts().reset_index()
+                cond_counts.columns = ["Condition", "Count"]
+                fig3 = px.bar(cond_counts, x="Condition", y="Count",
+                              title="Property Condition",
+                              color_discrete_sequence=["#003071"])
+                fig3.update_layout(
+                    plot_bgcolor="white", paper_bgcolor="white", height=300,
+                    font=dict(family="Inter, Arial, sans-serif", size=12),
+                    title_font=dict(size=13, color="#003071"),
+                    margin=dict(l=10, r=20, t=40, b=10),
+                    xaxis=dict(fixedrange=True), yaxis=dict(fixedrange=True),
+                    xaxis_title="", yaxis_title="",
+                )
+                fig3.update_traces(hovertemplate="%{x}<br><b>%{y:,}</b><extra></extra>")
+                st.plotly_chart(fig3, use_container_width=True, config={"scrollZoom": False, "displayModeBar": False})
             with ch4:
-                region_counts = filtered_df["cuyregion"].value_counts()
-                st.bar_chart(region_counts, color="#FFD700")
-                st.caption("By Cuyahoga Region")
+                region_counts = filtered_df["cuyregion"].value_counts().reset_index()
+                region_counts.columns = ["Region", "Count"]
+                fig4 = px.bar(region_counts, x="Region", y="Count",
+                              title="By Cuyahoga Region",
+                              color_discrete_sequence=["#FFD700"])
+                fig4.update_layout(
+                    plot_bgcolor="white", paper_bgcolor="white", height=300,
+                    font=dict(family="Inter, Arial, sans-serif", size=12),
+                    title_font=dict(size=13, color="#003071"),
+                    margin=dict(l=10, r=20, t=40, b=10),
+                    xaxis=dict(fixedrange=True), yaxis=dict(fixedrange=True),
+                    xaxis_title="", yaxis_title="",
+                )
+                fig4.update_traces(hovertemplate="%{x}<br><b>%{y:,}</b><extra></extra>")
+                st.plotly_chart(fig4, use_container_width=True, config={"scrollZoom": False, "displayModeBar": False})
         else:
             st.info("No data to chart. Adjust your filters.")
 
