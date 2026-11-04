@@ -24,13 +24,12 @@ def render():
         .stat-box { background: #f8f9fc; border-left: 4px solid #003071; padding: 1rem 1.2rem; border-radius: 4px; }
         .stat-box .stat-value { font-size: 1.6rem; font-weight: 700; color: #003071; }
         .stat-box .stat-label { font-size: 0.85rem; color: #666; }
-        .preset-section { margin-bottom: 0.75rem; }
-        .preset-section button {
+        [class*="st-key-preset_"] button {
             min-height: 6rem !important;
             height: auto !important;
             white-space: normal !important;
         }
-        .preset-section button [data-testid="stMarkdownContainer"] p {
+        [class*="st-key-preset_"] button p {
             font-size: 1.35rem !important;
             font-weight: 700 !important;
             line-height: 1.4 !important;
@@ -45,7 +44,6 @@ def render():
     if "ds_presets" not in st.session_state:
         st.session_state.ds_presets = set()
 
-    st.markdown('<div class="preset-section">', unsafe_allow_html=True)
     pr1, pr2, pr3, pr4, pr5, pr6 = st.columns(6)
     preset_map = {
         "Vacant Properties": pr1,
@@ -55,17 +53,32 @@ def render():
         "In Foreclosure": pr5,
         "Failed Lead Certification": pr6,
     }
+    def _preset_key(label):
+        return "preset_" + label.replace(" ", "_").replace("-", "_")
     for p_label, p_col in preset_map.items():
         with p_col:
             is_active = p_label in st.session_state.ds_presets
-            btn_label = f"✓ {p_label}" if is_active else p_label
-            if st.button(btn_label, use_container_width=True, key=f"preset_{p_label}"):
+            if st.button(p_label, use_container_width=True, key=_preset_key(p_label)):
                 if is_active:
                     st.session_state.ds_presets.discard(p_label)
                 else:
                     st.session_state.ds_presets.add(p_label)
                 st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
+
+    active_keys = [_preset_key(p) for p in st.session_state.ds_presets]
+    if active_keys:
+        selectors = ", ".join(f".st-key-{k} button" for k in active_keys)
+        text_selectors = ", ".join(f".st-key-{k} button p" for k in active_keys)
+        st.markdown(f"""<style>
+        {selectors} {{
+            background-color: #003071 !important;
+            border: 3px solid #FFD700 !important;
+            box-shadow: 0 4px 12px rgba(0,48,113,0.3) !important;
+        }}
+        {text_selectors} {{
+            color: white !important;
+        }}
+        </style>""", unsafe_allow_html=True)
 
     st.markdown("---")
 
@@ -81,12 +94,19 @@ def render():
         hood_ward_pct = df[df["NEIGHBOR10"].fillna("").str.strip() != ""].groupby("NEIGHBOR10")["is_cleveland"].mean()
         cleveland_hoods = sorted(hood_ward_pct[hood_ward_pct > 0.5].index.tolist())
         suburb_hoods = sorted(hood_ward_pct[hood_ward_pct <= 0.5].index.tolist())
+        _CLE_HEADER = "── Cleveland Neighborhoods ──"
+        _SUB_HEADER = "── Suburbs ──"
         neighborhood_opts = (
-            ["Cleveland (City)", "All of Cuyahoga County"]
+            ["Cleveland (City)", "All of Cuyahoga County", _CLE_HEADER]
             + cleveland_hoods
+            + [_SUB_HEADER, "All Suburbs"]
             + suburb_hoods
         )
         f_neighborhood = st.selectbox("Neighborhood / Area", neighborhood_opts, index=0, key="f_nbh")
+        if f_neighborhood == _CLE_HEADER:
+            f_neighborhood = "Cleveland (City)"
+        elif f_neighborhood == _SUB_HEADER:
+            f_neighborhood = "All Suburbs"
     with sf2:
         prop_types = ["All"] + sorted(df["CLASSIFICATION_DESCR"].dropna().astype(str).replace("nan","").pipe(lambda s: s[s != ""]).unique().tolist())
         f_prop_type = st.selectbox("Property Type", prop_types, key="f_ptype")
@@ -95,8 +115,8 @@ def render():
         yr_valid = yr_valid[(yr_valid > 0) & (yr_valid < 9999)]
         yr_min_data = int(yr_valid.min())
         yr_max_data = int(yr_valid.max())
-        yr_default_min = max(yr_min_data, 1950)
-        f_year_range = st.slider("Year Built", yr_min_data, yr_max_data, (yr_default_min, yr_max_data), key="f_yr")
+        f_year_range = st.slider("Year Built", yr_min_data, yr_max_data, (yr_min_data, yr_max_data), key="f_yr")
+        f_yr_include_unknown = st.checkbox("Include properties with no year on record", value=True, key="f_yr_unk")
 
     sf4, sf5 = st.columns(2)
     with sf4:
@@ -281,19 +301,19 @@ def render():
         filtered_df = filtered_df[filtered_df["is_cleveland"]]
     elif f_neighborhood == "All of Cuyahoga County":
         pass
+    elif f_neighborhood == "All Suburbs":
+        filtered_df = filtered_df[~filtered_df["is_cleveland"]]
     else:
         filtered_df = filtered_df[filtered_df["NEIGHBOR10"].astype(str) == f_neighborhood]
     if f_prop_type != "All":
         filtered_df = filtered_df[filtered_df["CLASSIFICATION_DESCR"].astype(str) == f_prop_type]
     if f_condition != "All":
         filtered_df = filtered_df[filtered_df["condition"].astype(str) == f_condition]
-    if f_year_range != (yr_min_data, yr_max_data):
-        filtered_df = filtered_df[
-            (filtered_df["yrbuilt"] >= f_year_range[0]) &
-            (filtered_df["yrbuilt"] <= f_year_range[1]) &
-            (filtered_df["yrbuilt"] > 0) &
-            (filtered_df["yrbuilt"] < 9999)
-        ]
+    if f_year_range != (yr_min_data, yr_max_data) or not f_yr_include_unknown:
+        yr = filtered_df["yrbuilt"]
+        in_range = (yr >= f_year_range[0]) & (yr <= f_year_range[1]) & (yr > 0) & (yr < 9999)
+        unknown = yr.isna() | (yr <= 0) | (yr >= 9999)
+        filtered_df = filtered_df[in_range | (unknown & f_yr_include_unknown)]
     filtered_df = filtered_df[
         (filtered_df["TAX_MARKET_TOTAL"].fillna(0) >= f_value_range[0]) &
         (filtered_df["TAX_MARKET_TOTAL"].fillna(0) <= f_value_range[1])
@@ -392,6 +412,9 @@ def render():
     if f_out_of_state:
         filtered_df = filtered_df[~filtered_df["MAIL_STATE"].fillna("").isin(["OH", "/", ""])]
 
+    if f_neighborhood not in ("Cleveland (City)",):
+        st.warning("Violation data is only available for City of Cleveland properties. Results outside Cleveland may be incomplete.")
+
     # Sort improved residential properties first by scoring data completeness.
     _addr_s = filtered_df["address"].fillna("")
     filtered_df = filtered_df.assign(
@@ -408,6 +431,66 @@ def render():
     ).drop(columns=["_sort_score"]).reset_index(drop=True)
 
     st.markdown("---")
+
+    # Active filter summary
+    _summary = []
+    _summary.append(f"Area: {f_neighborhood}")
+    _summary.append(f"Year Built: {f_year_range[0]}–{f_year_range[1]}{'' if f_yr_include_unknown else ' (known years only)'}")
+    _summary.append(f"Property Value: {f_val_label}")
+    _summary.append(f"Property Type: {f_prop_type}")
+    _summary.append(f"Condition: {f_condition}")
+    if active_presets:
+        _summary.append(f"Presets: {', '.join(sorted(active_presets))}")
+    if f_ward != "All":        _summary.append(f"Ward: {f_ward}")
+    if f_zip != "All":         _summary.append(f"ZIP: {f_zip}")
+    if f_region != "All":      _summary.append(f"Region: {f_region}")
+    if f_cia != "All":         _summary.append(f"CIA Area: {f_cia}")
+    if f_style != "All":       _summary.append(f"Style: {f_style}")
+    if f_stories != "All":     _summary.append(f"Stories: {f_stories}")
+    if f_zone != "All":        _summary.append(f"Zoning: {f_zone}")
+    if f_pclass != "All":      _summary.append(f"Property Class: {f_pclass}")
+    if f_bed != "All":         _summary.append(f"Bedrooms: {f_bed}")
+    if f_bath != "All":        _summary.append(f"Bathrooms: {f_bath}")
+    if f_sqft != (0, sqft_max): _summary.append(f"Sq Ft: {f_sqft[0]:,}–{f_sqft[1]:,}")
+    if f_taxabate != "All":    _summary.append(f"Tax Abatement: {f_taxabate}")
+    if f_vtype != "All":       _summary.append(f"Violation Type: {f_vtype}")
+    if f_vtask != "All":       _summary.append(f"Violation Status: {f_vtask}")
+    if f_lsc != "All":         _summary.append(f"LSC Status: {f_lsc}")
+    if f_lead_rollout != "All": _summary.append(f"Lead Rollout: {f_lead_rollout}")
+    if f_fo_status != "All":   _summary.append(f"Foreclosure Status: {f_fo_status}")
+    if f_cdesig != "All":      _summary.append(f"Case Designation: {f_cdesig}")
+    if f_demo_status != "All": _summary.append(f"Demo Status: {f_demo_status}")
+    if f_rehab_status != "All": _summary.append(f"Rehab Status: {f_rehab_status}")
+    if f_disp_status != "All": _summary.append(f"Disposition: {f_disp_status}")
+    _bool_filters = []
+    if f_homestead:      _bool_filters.append("Homestead exemption")
+    if f_payment_plan:   _bool_filters.append("On payment plan")
+    if f_cert_pend:      _bool_filters.append("Tax cert. pending")
+    if f_cert_sold:      _bool_filters.append("Tax cert. sold")
+    if f_active_condemn: _bool_filters.append("Active condemnation")
+    if f_bh_lead:        _bool_filters.append("B&H lead violation")
+    if f_cdc_comp:       _bool_filters.append("CDC complaint")
+    if f_council_comp:   _bool_filters.append("Council complaint")
+    if f_has_fo_deed:    _bool_filters.append("Has fiscal officer deed")
+    if f_city_lb:        _bool_filters.append("City Land Bank")
+    if f_cclrc:          _bool_filters.append("CCLRC")
+    if f_rental:         _bool_filters.append("Rental registered")
+    if f_sect8:          _bool_filters.append("Section 8")
+    if f_hud:            _bool_filters.append("HUD")
+    if f_out_of_state:   _bool_filters.append("Out-of-state owner")
+    if f_evict_status != "All": _bool_filters.append(f"Eviction status: {f_evict_status}")
+    if f_evict_disp != "All":   _bool_filters.append(f"Eviction disposition: {f_evict_disp}")
+    if f_evict_yr != "All":     _bool_filters.append(f"Eviction year: {f_evict_yr}")
+    if f_evict_multi:           _bool_filters.append("Multiple evictions")
+    if _bool_filters:
+        _summary.append(f"Other: {', '.join(_bool_filters)}")
+    _summary_html = "  |  ".join(_summary)
+    st.markdown(
+        f'<div style="font-size:0.85rem;color:#555;margin-bottom:0.75rem;line-height:1.8;">'
+        f'<strong style="color:#003071;">Active Filters:</strong>  {_summary_html}</div>',
+        unsafe_allow_html=True
+    )
+
     total = len(filtered_df)
     avg_val = int(filtered_df["TAX_MARKET_TOTAL"].mean()) if total > 0 else 0
     vacancy_pct = round(filtered_df["combovac"].fillna(0).sum() / total * 100, 1) if total > 0 else 0
@@ -943,4 +1026,4 @@ def render():
                 st.code("pip install geopandas shapely", language="bash")
 
     st.markdown("---")
-    st.markdown('<div style="text-align: center; color: #666; padding: 2rem 0;"><p>Powered by CWRU Poverty Center | Last Updated: March 2026</p></div>', unsafe_allow_html=True)
+    st.markdown('<div style="text-align: center; color: #666; padding: 2rem 0;"><p>Powered by CWRU Poverty Center | Last Updated: November 2026</p></div>', unsafe_allow_html=True)

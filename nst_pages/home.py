@@ -102,6 +102,6 @@ def render(assets):
     st.markdown("---")
     st.markdown("""
         <div style="text-align: center; color: #666; padding: 2rem 0;">
-            <p>Powered by CWRU Poverty Center | Last Updated: January 2026</p>
+            <p>Powered by CWRU Poverty Center | Last Updated: November 2026</p>
         </div>
     """, unsafe_allow_html=True)
