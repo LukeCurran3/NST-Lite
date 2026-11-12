@@ -4,6 +4,7 @@ __pycache__/
 *.pyc
 .env
 .claude/
+CLAUDE.md
 
 # Large data files — do not commit
 data/*.csv
