@@ -2,8 +2,11 @@
 
 import streamlit as st
 
+import styles
+
 
 def render(assets):
+    styles.inject_home()
     hero_backdrop_base64 = assets["hero_backdrop"]
     partner_cleveland_base64 = assets["partner_cleveland"]
     partner_cuyahoga_base64 = assets["partner_cuyahoga"]

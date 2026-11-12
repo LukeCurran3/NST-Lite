@@ -1,6 +1,6 @@
 # NST 2.0 Developer Guide
 
-A quick-reference guide for understanding and modifying the NST Streamlit app.
+Quick reference for understanding and modifying the NST Streamlit app.
 
 ---
 
@@ -8,189 +8,191 @@ A quick-reference guide for understanding and modifying the NST Streamlit app.
 
 ```
 NST UI/
-├── streamlitapp.py          ← Entire app (single file, ~1820 lines)
-├── assets/
-│   ├── logo.jpg             ← Browser tab icon
-│   ├── upperleft logo.jpg   ← Navbar logo
-│   └── cleveland backdrop.jpg ← Home page hero image
-├── data/
-│   ├── nst_sample_data.csv  ← 5,000 synthetic properties, 35 columns
-│   ├── sampledatadictionary.md ← Column definitions
-│   └── SAMPLE_DATA_README.md
-└── DEVELOPER_GUIDE.md       ← This file
+├── streamlitapp.py              Entry point. Auth, styles, navbar, routing.
+├── config.py                    Constants: colors, column groups, presets, regex.
+├── auth.py                      Password gate.
+├── navbar.py                    Top navbar HTML and asset loading.
+├── styles.py                    All CSS. One injector per page.
+│
+├── loaders/                     Cached data loaders (@st.cache_data).
+│   ├── __init__.py              Re-exports every public loader.
+│   ├── core.py                  load_data, load_neighborhoods, load_map_agg, load_neighborhood_data.
+│   ├── property_search.py       ps_search + per-parcel history pulls.
+│   ├── distressed_rentals.py    load_distressed_rentals (big multi-CTE SQL).
+│   └── oos_owners.py            load_oos_data.
+│
+├── utils/                       Shared helpers used across pages.
+│   ├── formatting.py            fmt_money, fmt_text, fmt_year, fmt_int, flag_yn, flag_yn_colored.
+│   ├── html.py                  cell, grid, section (small HTML builders).
+│   └── parcel.py                normalize_parcel, strip_suffix, STREET_SUFFIXES.
+│
+├── nst_pages/                   One file per page. Each exports render().
+│   ├── home.py                  Hero banner, data cards, partner logos.
+│   ├── maps.py                  County-wide neighborhood choropleth + sidebar list.
+│   ├── neighborhood.py          Neighborhood profile page.
+│   ├── property_search.py       Lookup by address / parcel / owner. Five detail tabs.
+│   ├── methodology.py           Documentation tabs.
+│   ├── projects.py              Popular projects hub.
+│   ├── contact.py               Contact cards.
+│   ├── oos_owners.py            Out-of-state owner finder.
+│   ├── distressed_rentals.py    Distressed rentals browser.
+│   │
+│   └── datasets/                Datasets page as a package.
+│       ├── __init__.py          Re-exports render.
+│       ├── page.py              Orchestrator. Wires filters, tabs, export together.
+│       ├── presets.py           6 preset toggle buttons.
+│       ├── filters.py           All filter widgets + the filter-application if-chain.
+│       ├── summary.py           Active-filter summary line + 4 KPI stat boxes.
+│       ├── tab_table.py         Table view + column customizer.
+│       ├── tab_map.py           Folium choropleth / marker cluster.
+│       ├── tab_charts.py        Plotly bar charts.
+│       ├── tab_summary.py       Summary tab.
+│       └── export.py            CSV / GeoJSON / Shapefile download buttons.
+│
+├── scripts/
+│   ├── nst_sync.py              Nightly SAS to Parquet pipeline.
+│   ├── nst_sync.bat             Windows Task Scheduler entry point.
+│   └── explore_sas.py           Dev utility: inspect SAS schemas.
+│
+├── assets/                      Logos, hero image, partner SVGs, favicon.
+├── data/                        Parquet files + shapefiles (not committed).
+├── requirements.txt
+└── DEVELOPER_GUIDE.md           This file.
 ```
 
 ---
 
-## How the App is Organized
+## How Routing Works
 
-The app is one file split into clear sections. Here's the map:
-
-| Lines (approx.) | Section | What it does |
-|---|---|---|
-| 1–23 | Module docstring | High-level overview, routing table, color scheme |
-| 25–34 | Imports | All Python imports |
-| 36–61 | Setup | Load images, configure page, read URL params |
-| 63–421 | Global CSS | All shared styles (navbar, hero, cards, buttons) |
-| 424–485 | Navbar HTML | Navigation bar rendered on every page |
-| 488–493 | Routing comment | Instructions for adding new pages |
-| 496–948 | **Datasets page** | `?page=datasets` — search, filter, results, export |
-| 951–1413 | **Map Explorer** | `?page=maps` — map overview + neighborhood profiles |
-| 1416–1701 | **Property Search** | `?page=property-search` — single property lookup |
-| 1705–1819 | **Home page** | Default landing — hero, info cards, partners, footer |
-
----
-
-## Page Routing
-
-There is **no multi-page setup**. Routing is done with URL query parameters:
+There is no multi-page setup. All routing is done with the `?page=` URL query parameter.
+`streamlitapp.py` reads it and calls the matching `render()` function:
 
 ```python
-query_params = st.query_params
-current_page = query_params.get("page", "home")
-
 if current_page == "datasets":
-    # datasets page code
+    datasets.render()
 elif current_page == "maps":
-    # maps page code
-elif current_page == "property-search":
-    # property search code
+    maps.render()
+...
 else:
-    # home page (default)
+    home.render(ASSETS)
 ```
 
-### How to add a new page
+Two ways to navigate:
 
-1. Add an `elif current_page == "your-page":` block before the `else:` (home page)
-2. Add a link in the navbar HTML (look for the `<div class="navbar-links">` section)
-3. Use `?page=your-page` as the URL
-
----
-
-## Navigation Patterns
-
-There are **two ways** to navigate between pages. Use the right one:
-
-### From HTML (links, buttons)
-```html
-<a href="?page=maps&hood=Tremont" target="_self">View Tremont</a>
-```
-**`target="_self"` is required.** Streamlit runs in an iframe — without it, links open a new tab instead of navigating.
-
-### From Python (dropdowns, click handlers)
-```python
-st.query_params["page"] = "maps"
-st.rerun()
-```
-Use this when responding to Streamlit widget interactions (selectbox, button, map click, etc.).
-
----
-
-## Data Loading
-
-All pages load data from CSV using cached functions:
-
-```python
-@st.cache_data
-def load_data():
-    return pd.read_csv("data/nst_sample_data.csv")
-```
-
-`@st.cache_data` means the CSV is read once and reused across reruns. If you swap in a database, replace the body of these functions — the caching decorator still works.
-
-Each page has its **own** `load_data()` function (they're defined inside the page's `if` block so they don't conflict).
-
----
-
-## Styling
-
-All CSS lives in one big `st.markdown("""<style>...</style>""")` block near the top (lines 63–421). Key classes:
-
-| CSS Class | Used for |
-|---|---|
-| `.navbar`, `.navbar-container` | Top navigation bar |
-| `.navbar-links` | Nav link row |
-| `.dropdown-*` | Dropdown menus in navbar |
-| `.hero-section` | Home page hero banner |
-| `.data-card` | Stat cards (Map Explorer profiles) |
-| `.partner-card` | Partner logos on home page |
-| `.stExpander` (Streamlit built-in) | Export Options styling override |
-
-### Color scheme
-- **Navy:** `#003071` (primary — headers, buttons, accents)
-- **Gold:** `#FFD700` (highlights, hover states)
-- **Light gray:** `#f8f9fc` (page backgrounds)
-- **Font:** Inter (loaded from Google Fonts)
-
-### CSS gotcha
-The navbar uses **negative margins** (`margin-left: -100px`, etc.) to break out of Streamlit's default container padding. This is intentional — don't remove it.
-
----
-
-## Map Explorer: Two States
-
-The Map Explorer page (`?page=maps`) has two states controlled by whether `hood` is in the URL:
-
-### State 1 — Map Overview (`?page=maps`)
-- Left sidebar: dropdown + clickable neighborhood list
-- Right side: Folium map with colored circles for each neighborhood
-- **Click detection:** `st_folium` returns `last_object_clicked_tooltip`, which contains the neighborhood name. Code checks if it's a valid name, then navigates via `st.query_params`.
-
-### State 2 — Neighborhood Profile (`?page=maps&hood=Tremont`)
-- Stat cards (total properties, avg value, vacancy rate, etc.)
-- Three tabs: Overview (charts), Data (table), Download (CSV/GeoJSON/Shapefile)
-- "Back to Map" link at the top
-
----
-
-## Search (How It Works)
-
-Both the Datasets page and Property Search page let users search by address. The search combines `house_number` and `street_name` into one field:
-
-```python
-full_address = df["house_number"].astype(str) + " " + df["street_name"].fillna("")
-mask = full_address.str.contains(query, case=False, na=False)
-```
-
-This way searching "1725 Pearl Rd" matches a row where `house_number=1725` and `street_name=Pearl Rd`.
-
----
-
-## Export / Download
-
-The Datasets page and Map Explorer profiles both offer data export:
-
-- **CSV:** `df.to_csv()` → `st.download_button()`
-- **GeoJSON:** Manually built from `latitude`/`longitude` columns (no geopandas needed)
-- **Shapefile:** Uses `geopandas` + `zipfile` to create a `.zip` with `.shp/.shx/.dbf/.prj` files. Wrapped in `try/except` — if geopandas isn't installed, shows a warning instead of crashing.
+- From HTML links: `<a href="?auth=1&page=maps" target="_self">`. The `target="_self"` is required.
+- From Python handlers: `st.query_params["page"] = "maps"; st.rerun()`.
 
 ---
 
 ## Common Tasks
 
+### Add a new page
+
+1. Create `nst_pages/your_page.py` with a `render()` function.
+2. Import it in `streamlitapp.py` and add one `elif current_page == "your-page":` branch.
+3. Add a link in `navbar.py` under the appropriate dropdown.
+
+### Add or change CSS
+
+All CSS lives in `styles.py`. Each page has its own injector (`styles.inject_X()`) called at the
+top of its `render()`. If you need a new shared style, add it to `_global_css()`. For a page-specific
+style, extend that page's injector function. Colors come from `config.COLOR_NAVY`, `COLOR_GOLD`,
+`COLOR_LIGHT_GRAY`; use f-string interpolation inside the CSS to reference them.
+
+Never write a raw `st.markdown("<style>...</style>")` inside a page. Put it in `styles.py`.
+
+### Add a shared utility
+
+Formatting of values: `utils/formatting.py`.
+HTML snippet builders: `utils/html.py`.
+Parcel ID or street name helpers: `utils/parcel.py`.
+If a helper doesn't fit any of those, add a new file under `utils/` with a clear name.
+
+### Add or change a data loader
+
+Shared county-wide loaders go in `loaders/core.py`. Page-specific loaders go in their matching
+file (e.g. `loaders/property_search.py`). After adding a new function, re-export it from
+`loaders/__init__.py` so pages can still do `from loaders import your_new_loader`.
+
+Every loader must use `@st.cache_data`.
+
+### Modify filters on the Datasets page
+
+Filter widgets and the filter-application logic both live in `nst_pages/datasets/filters.py`.
+Each filter has three parts:
+1. Widget drawn inside `_render_advanced` or `render_filters`.
+2. State key written into the `state` dict.
+3. Branch inside `apply_filters` that narrows the DataFrame.
+
+Keep all three in sync when adding a new filter.
+
+### Modify a tab on the Datasets page
+
+Each tab is its own file: `tab_table.py`, `tab_map.py`, `tab_charts.py`, `tab_summary.py`.
+They all take the already-filtered DataFrame and render.
+
 ### Change the data source
-Replace the CSV read inside `load_data()` with your database query. Keep the `@st.cache_data` decorator. Make sure the returned DataFrame has the same column names (or update references).
 
-### Add a stat card to a neighborhood profile
-Find the stat cards section in the Map Explorer (look for `st.markdown('<div class="data-card">`). Copy one card block and change the metric/value.
+Replace the DuckDB query inside the relevant loader in `loaders/`. Keep the `@st.cache_data`
+decorator and the return DataFrame schema the same.
 
-### Change the navbar links
-Search for `navbar-links` in the HTML. Each link is an `<a>` tag. Remember `target="_self"`.
+---
 
-### Add a new export format
-Find the Download tab in the relevant page (look for `with tab3:` or `with download_tab:`). Add a new `st.download_button()`.
+## Styling
+
+Theme tokens in `config.py`:
+- `COLOR_NAVY` (`#003071`) is the primary brand color.
+- `COLOR_GOLD` (`#FFD700`) is the accent / hover color.
+- `COLOR_LIGHT_GRAY` (`#f8f9fc`) is the pale background used by stat boxes.
+- Font: Inter, loaded from Google Fonts in `styles._global_css`.
+
+Tab styling (`.stTabs`) is set globally so every tab bar on every page is full-width with
+equal column widths. If you want a page-specific tab style, override inside that page's injector.
+
+The navbar uses negative margins (`margin-left: -100px` etc.) to break out of Streamlit's
+default padding. Don't remove them.
+
+---
+
+## Password Gate
+
+`auth.check_password()` is called once at the top of `streamlitapp.py`. It returns True if
+the URL contains `?auth=1` or if the session has already authenticated. The site password
+lives in `config.SITE_PASSWORD`. Every internal link uses `?auth=1&page=...` so navigation
+doesn't re-prompt.
+
+---
+
+## Deployment
+
+The app runs on the internal Windows server `msassneocandod1`, served via IIS reverse
+proxy on port 80 to Streamlit on 8501. NSSM manages it as the `NST-Streamlit` service.
+
+To push an update:
+
+```bash
+cd C:\nst\app
+git pull
+C:\nst\nssm.exe restart NST-Streamlit
+```
+
+The nightly SAS to Parquet sync runs at 3 AM via Windows Task Scheduler and lives in
+`scripts/nst_sync.py`.
+
+---
+
+## Running Locally
+
+```bash
+venv\Scripts\streamlit.exe run streamlitapp.py
+```
+
+The venv must be used (system Python lacks duckdb). Data files must be present under
+`data/parquets917/` for the app to load.
 
 ---
 
 ## Dependencies
 
-```
-streamlit
-streamlit-folium
-folium
-pandas
-Pillow
-geopandas (optional — only needed for shapefile export)
-```
-
-Run with: `streamlit run streamlitapp.py`
+See `requirements.txt`. Core: `streamlit`, `duckdb`, `pandas`, `geopandas`, `folium`,
+`streamlit-folium`, `plotly`, `Pillow`.

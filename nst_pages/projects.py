@@ -2,85 +2,11 @@
 
 import streamlit as st
 
+import styles
+
 
 def render():
-    st.markdown("""
-        <style>
-        .breadcrumb { font-size: 0.95rem; color: #666; margin-bottom: 1.5rem; }
-        .breadcrumb a { color: #003071; text-decoration: none; }
-        .breadcrumb a:hover { text-decoration: underline; }
-        .page-header { font-size: 2.5rem; font-weight: 700; color: #003071; margin-bottom: 0.3rem; }
-        .page-subtitle { font-size: 1.1rem; color: #666; margin-bottom: 2rem; }
-        .project-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 2rem;
-            margin-top: 1.5rem;
-        }
-        .project-card {
-            background: white;
-            border: 1px solid #e0e0e0;
-            border-top: 4px solid #003071;
-            border-radius: 6px;
-            padding: 2rem;
-            text-decoration: none !important;
-            color: inherit;
-            display: block;
-            transition: box-shadow 0.2s, transform 0.15s;
-        }
-        .project-card:hover {
-            box-shadow: 0 6px 20px rgba(0,0,0,0.1);
-            transform: translateY(-2px);
-        }
-        .project-card-coming {
-            background: #f8f9fc;
-            border: 1px solid #e0e0e0;
-            border-top: 4px solid #ccc;
-            border-radius: 6px;
-            padding: 2rem;
-            opacity: 0.6;
-        }
-        .project-card-tag {
-            display: inline-block;
-            font-size: 0.75rem;
-            font-weight: 600;
-            color: #003071;
-            background: #eef2fa;
-            border-radius: 20px;
-            padding: 0.25rem 0.75rem;
-            margin-top: 1rem;
-            letter-spacing: 0.04em;
-        }
-        .project-card-title {
-            font-size: 1.25rem;
-            font-weight: 700;
-            color: #003071;
-            margin-bottom: 0.75rem;
-        }
-        .project-card-coming .project-card-title {
-            color: #999;
-        }
-        .project-card-desc {
-            font-size: 0.95rem;
-            color: #555;
-            line-height: 1.6;
-        }
-        .project-card-coming .project-card-desc {
-            color: #bbb;
-        }
-        .coming-label {
-            display: inline-block;
-            font-size: 0.75rem;
-            font-weight: 600;
-            color: #999;
-            background: #e8e8e8;
-            border-radius: 20px;
-            padding: 0.25rem 0.75rem;
-            margin-top: 1rem;
-            letter-spacing: 0.04em;
-        }
-        </style>
-    """, unsafe_allow_html=True)
+    styles.inject_projects()
 
     st.markdown('<div class="breadcrumb"><a href="?auth=1&page=home" target="_self">Home</a> &nbsp;/&nbsp; <strong>Popular Projects</strong></div>', unsafe_allow_html=True)
     st.markdown("""

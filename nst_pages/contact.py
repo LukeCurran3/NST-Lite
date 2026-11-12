@@ -2,79 +2,11 @@
 
 import streamlit as st
 
+import styles
+
 
 def render():
-    st.markdown("""
-        <style>
-        .breadcrumb { font-size: 0.95rem; color: #666; margin-bottom: 1.5rem; }
-        .breadcrumb a { color: #003071; text-decoration: none; }
-        .breadcrumb a:hover { text-decoration: underline; }
-        .page-header { font-size: 2.5rem; font-weight: 700; color: #003071; margin-bottom: 0.3rem; }
-        .page-subtitle { font-size: 1.1rem; color: #666; margin-bottom: 2rem; }
-        .contact-card {
-            background: white;
-            border: 1px solid #e0e0e0;
-            border-radius: 8px;
-            padding: 2rem;
-            margin-bottom: 1.5rem;
-        }
-        .contact-card-title {
-            font-size: 1.1rem;
-            font-weight: 700;
-            color: #003071;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            border-bottom: 2px solid #FFD700;
-            padding-bottom: 0.5rem;
-            margin-bottom: 1.2rem;
-        }
-        .contact-org {
-            font-size: 1rem;
-            font-weight: 700;
-            color: #003071;
-            margin-bottom: 0.2rem;
-        }
-        .contact-school {
-            font-size: 0.9rem;
-            color: #444;
-            font-style: italic;
-            margin-bottom: 0.15rem;
-        }
-        .contact-univ {
-            font-size: 0.9rem;
-            color: #444;
-            margin-bottom: 0.15rem;
-        }
-        .contact-addr {
-            font-size: 0.9rem;
-            color: #555;
-            line-height: 1.6;
-            margin-bottom: 0.8rem;
-        }
-        .contact-detail {
-            font-size: 0.9rem;
-            color: #555;
-            margin-bottom: 0.2rem;
-        }
-        .contact-detail a { color: #003071; text-decoration: none; }
-        .contact-detail a:hover { text-decoration: underline; }
-        .contact-link-btn {
-            display: inline-block;
-            margin-top: 1rem;
-            padding: 0.6rem 1.4rem;
-            background: #003071;
-            color: white !important;
-            border-radius: 4px;
-            font-size: 0.9rem;
-            font-weight: 600;
-            text-decoration: none;
-            letter-spacing: 0.5px;
-        }
-        .contact-link-btn:hover { background: #00245a; text-decoration: none !important; }
-        .contact-link-btn.gold { background: #FFD700; color: #003071 !important; }
-        .contact-link-btn.gold:hover { background: #e6c200; }
-        </style>
-    """, unsafe_allow_html=True)
+    styles.inject_contact()
 
     st.markdown("""
         <div class="breadcrumb"><a href="?auth=1&page=home">Home</a> &rsaquo; Talk With Us</div>

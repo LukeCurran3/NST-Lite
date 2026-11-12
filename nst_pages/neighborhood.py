@@ -9,51 +9,13 @@ import streamlit as st
 from streamlit_folium import st_folium
 
 from loaders import load_neighborhood_data
+import styles
 
 
 def render(hood_name):
     selected_hood = hood_name
 
-    st.markdown("""
-        <style>
-        .breadcrumb { font-size: 0.95rem; color: #666; margin-bottom: 1.5rem; }
-        .breadcrumb a { color: #003071; text-decoration: none; }
-        .breadcrumb a:hover { text-decoration: underline; }
-        .hood-profile-header { font-size: 2.4rem; font-weight: 700; color: #003071; margin-bottom: 0.2rem; }
-        .hood-profile-sub { font-size: 1rem; color: #666; margin-bottom: 1.5rem; }
-        .hood-stat-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 1rem;
-            margin-bottom: 1.5rem;
-        }
-        .hood-stat-card {
-            background: #f8f9fc;
-            border-left: 4px solid #003071;
-            padding: 1rem 1.2rem;
-            border-radius: 4px;
-        }
-        .hood-stat-card-value { font-size: 1.6rem; font-weight: 700; color: #003071; }
-        .hood-stat-card-label { font-size: 0.85rem; color: #666; }
-        .hood-section-title {
-            font-size: 1.3rem;
-            font-weight: 600;
-            color: #003071;
-            margin: 1.5rem 0 0.8rem 0;
-            padding-bottom: 0.4rem;
-            border-bottom: 2px solid #003071;
-        }
-        .hood-back-link {
-            display: inline-block;
-            color: #003071 !important;
-            text-decoration: none !important;
-            font-weight: 600;
-            font-size: 1rem;
-            margin-bottom: 1rem;
-        }
-        .hood-back-link:hover { color: #FFD700 !important; }
-        </style>
-    """, unsafe_allow_html=True)
+    styles.inject_neighborhood()
 
     if not selected_hood:
         st.warning("No neighborhood selected. Please choose one from the Map Explorer.")

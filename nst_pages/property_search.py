@@ -8,58 +8,23 @@ from loaders import (
     ps_search, ps_value_history, ps_sales_history,
     ps_tax_history, ps_hood_counts,
 )
+from utils.formatting import fmt_val, fmt_int as _fmt_int, flag_yn_colored
+from utils.html import cell, grid, section
+import styles
 
 
 def render():
     query_params = st.query_params
 
     def fmt(val, prefix="", suffix="", fmt_int=False, na="N/A"):
-        if val is None or (isinstance(val, float) and pd.isna(val)) or str(val).strip() in ("", "nan", "None"):
-            return na
+        """Legacy signature; delegates to shared formatters in utils.formatting."""
         if fmt_int:
-            try:
-                return f"{prefix}{int(float(val)):,}{suffix}"
-            except (ValueError, TypeError):
-                return na
-        return f"{prefix}{val}{suffix}"
+            return _fmt_int(val, prefix=prefix, suffix=suffix, na=na)
+        return fmt_val(val, prefix=prefix, suffix=suffix, na=na)
 
-    def flag(val):
-        try:
-            v = int(float(val))
-            return '<span style="color:#c0392b;font-weight:600;">Yes</span>' if v == 1 else '<span style="color:#1e8449;font-weight:600;">No</span>'
-        except (ValueError, TypeError):
-            return fmt(val)
+    flag = flag_yn_colored
 
-    def cell(label, value):
-        return (
-            f'<div style="padding:0.75rem;background:#f8f9fc;border-radius:4px;">'
-            f'<div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.2rem;">{label}</div>'
-            f'<div style="font-size:1rem;font-weight:600;color:#003071;">{value}</div>'
-            f'</div>'
-        )
-
-    def grid(*cells, cols=3):
-        style = f'display:grid;grid-template-columns:repeat({cols},1fr);gap:0.75rem;margin-bottom:1rem;'
-        return f'<div style="{style}">{"".join(cells)}</div>'
-
-    def section(title):
-        st.markdown(
-            f'<div style="font-size:1.15rem;font-weight:600;color:#003071;'
-            f'margin:1.5rem 0 0.75rem;padding-bottom:0.35rem;'
-            f'border-bottom:2px solid #003071;">{title}</div>',
-            unsafe_allow_html=True,
-        )
-
-    st.markdown("""
-        <style>
-        .breadcrumb { font-size:0.95rem;color:#666;margin-bottom:1.5rem; }
-        .breadcrumb a { color:#003071;text-decoration:none; }
-        .ps-header { font-size:2rem;font-weight:700;color:#003071;margin-bottom:0.15rem; }
-        .ps-meta   { font-size:0.9rem;color:#888;margin-bottom:1.2rem; }
-        .kpi-val   { font-size:1.5rem;font-weight:700;color:#003071; }
-        .kpi-lbl   { font-size:0.8rem;color:#666; }
-        </style>
-    """, unsafe_allow_html=True)
+    styles.inject_property_search()
 
     st.markdown(
         '<div class="breadcrumb">'

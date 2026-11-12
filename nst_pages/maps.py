@@ -5,6 +5,7 @@ from streamlit_folium import st_folium
 import streamlit as st
 
 from loaders import load_neighborhoods, load_map_agg
+import styles
 
 
 def render():
@@ -14,113 +15,7 @@ def render():
     _hoods_w_data = set(df_map["NEIGHBOR10"].dropna())
     _max_count    = int(df_map["count"].max()) if len(df_map) > 0 else 1
 
-    st.markdown("""
-        <style>
-        .map-page-header {
-            font-size: 2.5rem;
-            font-weight: 700;
-            color: #003071;
-            margin-bottom: 0.3rem;
-        }
-        .map-page-subtitle {
-            font-size: 1.1rem;
-            color: #666;
-            margin-bottom: 1rem;
-        }
-        .map-sidebar-prompt {
-            background: #f0f4fa;
-            border: 2px dashed #003071;
-            border-radius: 8px;
-            padding: 2rem 1.5rem;
-            text-align: center;
-            margin: 1rem 0;
-        }
-        .map-sidebar-prompt-icon {
-            font-size: 2.5rem;
-            margin-bottom: 0.5rem;
-        }
-        .map-sidebar-prompt-text {
-            font-size: 1.1rem;
-            font-weight: 600;
-            color: #003071;
-        }
-        .hood-list-item {
-            display: block;
-            padding: 0.7rem 1rem;
-            border-bottom: 1px solid #e8e8e8;
-            color: #003071 !important;
-            text-decoration: none !important;
-            font-weight: 500;
-            font-size: 1rem;
-            transition: background 0.2s, padding-left 0.2s;
-        }
-        .hood-list-item:hover {
-            background: #f0f4fa;
-            padding-left: 1.4rem;
-        }
-        .hood-list-item-count {
-            float: right;
-            color: #999;
-            font-weight: 400;
-            font-size: 0.9rem;
-        }
-        .hood-profile-header {
-            font-size: 2.2rem;
-            font-weight: 700;
-            color: #003071;
-            margin-bottom: 0.2rem;
-        }
-        .hood-profile-sub {
-            font-size: 1rem;
-            color: #666;
-            margin-bottom: 1.5rem;
-        }
-        .hood-stat-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 1rem;
-            margin-bottom: 1.5rem;
-        }
-        .hood-stat-card {
-            background: #f8f9fc;
-            border-left: 4px solid #003071;
-            padding: 1rem 1.2rem;
-            border-radius: 4px;
-        }
-        .hood-stat-card-value {
-            font-size: 1.6rem;
-            font-weight: 700;
-            color: #003071;
-        }
-        .hood-stat-card-label {
-            font-size: 0.85rem;
-            color: #666;
-        }
-        .hood-section-title {
-            font-size: 1.3rem;
-            font-weight: 600;
-            color: #003071;
-            margin: 1.5rem 0 0.8rem 0;
-            padding-bottom: 0.4rem;
-            border-bottom: 2px solid #003071;
-        }
-        .hood-back-link {
-            display: inline-block;
-            color: #003071 !important;
-            text-decoration: none !important;
-            font-weight: 600;
-            font-size: 1rem;
-            margin-bottom: 1rem;
-            padding: 0.4rem 0;
-        }
-        .hood-back-link:hover {
-            color: #FFD700 !important;
-        }
-        .breadcrumb { font-size: 0.95rem; color: #666; margin-bottom: 1.5rem; }
-        .breadcrumb a { color: #003071; text-decoration: none; }
-        .breadcrumb a:hover { text-decoration: underline; }
-        </style>
-    """, unsafe_allow_html=True)
+    styles.inject_maps()
 
     st.markdown("""
         <div class="breadcrumb">

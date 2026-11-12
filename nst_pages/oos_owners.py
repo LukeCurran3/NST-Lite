@@ -4,6 +4,7 @@ import pandas as pd
 import streamlit as st
 
 from loaders import load_oos_data
+import styles
 
 
 def render():
@@ -37,126 +38,7 @@ def render():
         "foreclosure": int(df_oos["_is_foreclosure"].sum()),
     }
 
-    st.markdown("""
-        <style>
-        .breadcrumb { font-size: 0.95rem; color: #666; margin-bottom: 1rem; }
-        .breadcrumb a { color: #003071; text-decoration: none; }
-        .breadcrumb a:hover { text-decoration: underline; }
-
-        .oos-hero {
-            background: #003071;
-            border-radius: 8px;
-            padding: 2.5rem 2.5rem 2rem 2.5rem;
-            margin-bottom: 2rem;
-        }
-        .oos-hero-title {
-            font-size: 2.4rem;
-            font-weight: 800;
-            color: white;
-            margin-bottom: 0.5rem;
-            line-height: 1.1;
-        }
-        .oos-hero-sub {
-            font-size: 1rem;
-            color: rgba(255,255,255,0.75);
-            margin-bottom: 2rem;
-        }
-        .oos-stat-num {
-            font-size: 2.6rem;
-            font-weight: 800;
-            color: white;
-            line-height: 1.05;
-        }
-        .oos-stat-label {
-            display: inline-block;
-            background: #FFD700;
-            color: #003071;
-            font-weight: 700;
-            font-size: 0.72rem;
-            padding: 0.2rem 0.75rem;
-            border-radius: 3px;
-            margin-top: 0.45rem;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-        .oos-stat-divider {
-            border-left: 1px solid rgba(255,255,255,0.2);
-            margin: 0 0.5rem;
-        }
-
-        .states-row {
-            display: flex;
-            gap: 0.6rem;
-            flex-wrap: wrap;
-            margin: 1rem 0 0.5rem 0;
-        }
-        .state-chip {
-            background: rgba(255,255,255,0.12);
-            border: 1px solid rgba(255,255,255,0.25);
-            border-radius: 20px;
-            padding: 0.25rem 0.85rem;
-            font-size: 0.85rem;
-            color: white;
-            font-weight: 600;
-        }
-        .state-chip span { opacity: 0.65; font-weight: 400; margin-left: 0.25rem; }
-
-        .step-wrap {
-            display: flex;
-            align-items: flex-start;
-            gap: 1rem;
-            margin: 2.5rem 0 1rem 0;
-        }
-        .step-num {
-            background: #003071;
-            color: white;
-            min-width: 34px;
-            height: 34px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 800;
-            font-size: 1rem;
-            flex-shrink: 0;
-            margin-top: 2px;
-        }
-        .step-title { font-size: 1.25rem; font-weight: 700; color: #003071; }
-        .step-sub   { font-size: 0.88rem; color: #888; margin-top: 0.15rem; }
-
-        .ind-icon  { font-size: 1.5rem; margin-bottom: 0.35rem; }
-        .ind-title { font-size: 0.95rem; font-weight: 700; color: #003071; margin-bottom: 0.5rem; }
-        .ind-count { font-size: 2rem; font-weight: 800; color: #003071; line-height: 1.1; }
-        .ind-pct   { font-size: 0.78rem; color: #888; margin-top: 0.15rem; margin-bottom: 0.5rem; }
-        .ind-desc  { font-size: 0.8rem; color: #555; line-height: 1.45; padding-bottom: 0.6rem; border-bottom: 1px solid #eee; margin-bottom: 0.5rem; }
-
-        .match-banner {
-            background: #003071;
-            color: white;
-            border-radius: 8px;
-            padding: 1.4rem 2rem;
-            display: flex;
-            align-items: center;
-            gap: 1.25rem;
-            margin-bottom: 1.25rem;
-        }
-        .match-num   { font-size: 3rem; font-weight: 800; line-height: 1; }
-        .match-text  { font-size: 1rem; opacity: 0.8; }
-        .match-label { font-size: 0.75rem; opacity: 0.6; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 0.15rem; }
-
-        .filter-pill {
-            display: inline-block;
-            background: #eef2fa;
-            color: #003071;
-            border: 1px solid #c5d0e8;
-            border-radius: 20px;
-            padding: 0.2rem 0.75rem;
-            font-size: 0.8rem;
-            font-weight: 600;
-            margin: 0.2rem 0.2rem 0.2rem 0;
-        }
-        </style>
-    """, unsafe_allow_html=True)
+    styles.inject_oos_owners()
 
     st.markdown('<div class="breadcrumb"><a href="?auth=1&page=home" target="_self">Home</a> &nbsp;/&nbsp; <a href="?auth=1&page=projects" target="_self">Popular Projects</a> &nbsp;/&nbsp; <strong>Out-of-State Owner Finder</strong></div>', unsafe_allow_html=True)
 
